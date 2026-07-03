@@ -37,7 +37,29 @@ interface AlerterResult {
  * Resolves true if the user clicks "Upload" or the notification body; false
  * if they dismiss, ignore, or it times out.
  */
-export async function confirmUpload(fileName: string): Promise<boolean> {
+export function confirmUpload(fileName: string): Promise<boolean> {
+  return askAction("New screenshot", fileName, "Upload");
+}
+
+/**
+ * After a queued upload completes, offer to copy its URL (we must not clobber
+ * the clipboard unprompted). Resolves true if the user clicks "Copy URL" or
+ * the notification body.
+ */
+export function offerCopyUrl(url: string): Promise<boolean> {
+  return askAction("Queued upload finished", url, "Copy URL");
+}
+
+/**
+ * Show an actionable notification with a single affirmative button and wait.
+ * Resolves true if the user clicks the button or the notification body; false
+ * if they dismiss, ignore, or it times out.
+ */
+async function askAction(
+  subtitle: string,
+  message: string,
+  action: string,
+): Promise<boolean> {
   if (!isAlerterInstalled()) throw new AlerterMissingError();
 
   const proc = Bun.spawn(
@@ -47,11 +69,11 @@ export async function confirmUpload(fileName: string): Promise<boolean> {
       "-title",
       APP_TITLE,
       "-subtitle",
-      "New screenshot",
+      subtitle,
       "-message",
-      fileName,
+      message,
       "-actions",
-      "Upload",
+      action,
       "-timeout",
       String(ACTION_TIMEOUT_SECONDS),
     ],
@@ -65,17 +87,17 @@ export async function confirmUpload(fileName: string): Promise<boolean> {
   try {
     result = JSON.parse(stdout.trim()) as AlerterResult;
   } catch {
-    // Unparseable output — treat as "no action taken" rather than uploading.
+    // Unparseable output — treat as "no action taken".
     return false;
   }
 
-  // "Upload" is the only affirmative action, so a click on the notification
-  // body also counts — the action button is only visible on hover and only
-  // with the "Alerts" notification style.
+  // The single action is the only affirmative choice, so a click on the
+  // notification body also counts — the action button is only visible on
+  // hover and only with the "Alerts" notification style.
   if (result.activationType === "contentsClicked") return true;
   return (
     result.activationType === "actionClicked" &&
-    result.activationValue === "Upload"
+    result.activationValue === action
   );
 }
 

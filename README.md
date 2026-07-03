@@ -124,6 +124,28 @@ If that is not set, it falls back to `~/Desktop`. Only files whose names match
 the macOS screenshot pattern (e.g. `Screenshot 2026-07-03 at 20.14.30.png`) are
 considered. Screen recordings are ignored.
 
+## Offline queue
+
+If you click **Upload** while offline (or the upload fails for any
+network-level reason — DNS, connection refused/reset, timeouts, 5xx), the
+upload is queued instead of lost:
+
+- You get an "Offline — upload queued" notification.
+- The queue is stored at `~/Library/Application Support/spootie/queue.json`
+  (written atomically), so queued uploads survive restarting `spootie watch` —
+  pending items resume on startup.
+- While the daemon runs it retries in order with exponential backoff: 5s,
+  doubling up to a 60s cap, resetting after a success.
+- When a queued upload eventually succeeds, your clipboard is **not**
+  overwritten (you may have copied something else since). Instead you get a
+  notification with a **Copy URL** button; click it (or the notification body)
+  to copy the URL. Dismissing it copies nothing.
+- Errors that retrying cannot fix (bad credentials, access denied, missing
+  bucket) are never queued — they show an error notification immediately. If a
+  queued item hits such an error during a retry, it is dropped from the queue
+  with an error notification. If the local file has been deleted by the time a
+  retry runs, the entry is dropped silently (logged to the console).
+
 ## Manual test plan
 
 1. **Setup**
@@ -168,11 +190,30 @@ considered. Screen recordings are ignored.
      watcher.
    - Take a screenshot and click **Upload**.
    - You should see an "Upload failed" notification and an error line on stderr;
-     the process keeps running.
+     the process keeps running. Nothing is added to the offline queue (auth
+     errors are not retryable).
+
+7. **Offline queueing**
+   - With valid config, turn off Wi-Fi.
+   - Take a screenshot and click **Upload**.
+   - Expect an "Offline — upload queued" notification and an entry in
+     `~/Library/Application Support/spootie/queue.json`.
+   - Copy some unrelated text, then turn Wi-Fi back on. Within ~60s (backoff),
+     expect a "Queued upload finished" notification with a **Copy URL**
+     button; your clipboard must still hold the unrelated text until you click
+     it. Click it and confirm the URL is copied and the queue file is empty
+     (`[]`) again.
+
+8. **Queue survives restart**
+   - Repeat step 7, but quit `spootie watch` (Ctrl+C) while still offline
+     after the "queued" notification.
+   - Restart `bun run dev watch` (still offline): it logs that queued
+     upload(s) from a previous run are pending. Reconnect and confirm the
+     upload completes with the **Copy URL** notification.
 
 ## Scope
 
-Included so far: the core confirm-and-upload pipeline (milestone 1) and the
-`spootie setup` wizard with object auto-expiry (milestone 2). Not yet
-included: offline queueing, LaunchAgent/background install, pause/resume, and
-`spootie last`.
+Included so far: the core confirm-and-upload pipeline (milestone 1), the
+`spootie setup` wizard with object auto-expiry (milestone 2), and the offline
+queue with automatic retry (milestone 3). Not yet included:
+LaunchAgent/background install, pause/resume, and `spootie last`.

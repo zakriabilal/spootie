@@ -14,6 +14,13 @@ import {
   saveConfig,
   type Config,
 } from "./config.ts";
+import {
+  errorMessage,
+  errorName,
+  isAccessDenied,
+  isBadCredentials,
+  isNoLifecycleConfiguration,
+} from "./errors.ts";
 import { makeClient, uploadFile } from "./upload.ts";
 
 const LIFECYCLE_RULE_ID = "spootie-expiry";
@@ -236,43 +243,6 @@ async function verifyUploadStep(client: S3Client, config: Config): Promise<void>
   }
 
   if (process.exitCode === 1) process.exit(1);
-}
-
-// --- error classification -----------------------------------------------------
-
-function errorName(err: unknown): string {
-  return err instanceof Error ? err.name : "";
-}
-
-function errorStatus(err: unknown): number | undefined {
-  if (typeof err === "object" && err !== null && "$metadata" in err) {
-    const meta = (err as { $metadata?: { httpStatusCode?: number } }).$metadata;
-    return meta?.httpStatusCode;
-  }
-  return undefined;
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-function isBadCredentials(err: unknown): boolean {
-  const name = errorName(err);
-  return (
-    name === "InvalidAccessKeyId" ||
-    name === "SignatureDoesNotMatch" ||
-    errorStatus(err) === 401
-  );
-}
-
-function isAccessDenied(err: unknown): boolean {
-  return errorName(err) === "AccessDenied" || errorStatus(err) === 403;
-}
-
-function isNoLifecycleConfiguration(err: unknown): boolean {
-  return (
-    errorName(err) === "NoSuchLifecycleConfiguration" || errorStatus(err) === 404
-  );
 }
 
 function failBadCredentials(err: unknown): never {

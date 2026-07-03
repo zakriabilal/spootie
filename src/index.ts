@@ -9,6 +9,8 @@ import {
   notify,
   notifyError,
 } from "./notify.ts";
+import { errorMessage, isRetryableNetworkError } from "./errors.ts";
+import { UploadQueue } from "./queue.ts";
 import { runSetup } from "./setup.ts";
 import { uploadFile } from "./upload.ts";
 import { getScreenshotFolder, watchScreenshots } from "./watcher.ts";
@@ -27,12 +29,15 @@ async function runWatch(): Promise<void> {
     process.exit(1);
   }
 
+  const queue = new UploadQueue(config);
+  await queue.start();
+
   const folder = getScreenshotFolder();
   console.log(`spootie: watching for screenshots in ${folder}`);
   console.log("Press Ctrl+C to stop.");
 
   const handle = watchScreenshots(folder, (path) => {
-    void handleScreenshot(path, config);
+    void handleScreenshot(path, config, queue);
   });
 
   const shutdown = () => {
@@ -43,19 +48,32 @@ async function runWatch(): Promise<void> {
   process.on("SIGTERM", shutdown);
 }
 
-async function handleScreenshot(path: string, config: Config): Promise<void> {
+async function handleScreenshot(
+  path: string,
+  config: Config,
+  queue: UploadQueue,
+): Promise<void> {
   const name = basename(path);
   try {
     const wantsUpload = await confirmUpload(name);
     if (!wantsUpload) return;
+  } catch (err) {
+    console.error(`Notification failed for ${name}: ${errorMessage(err)}`);
+    return;
+  }
 
+  try {
     const { url } = await uploadFile(path, config);
     await copyToClipboard(url);
     notify(url, "Uploaded — URL copied");
     console.log(`Uploaded ${name} -> ${url}`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`Upload failed for ${name}: ${message}`);
+    if (isRetryableNetworkError(err)) {
+      console.error(`Upload failed for ${name} (network): ${errorMessage(err)}`);
+      await queue.enqueue(path);
+      return;
+    }
+    console.error(`Upload failed for ${name}: ${errorMessage(err)}`);
     notifyError(`Upload failed for ${name}`);
   }
 }
