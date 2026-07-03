@@ -1,19 +1,13 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Config } from "./config.ts";
 import { errorMessage, isRetryableNetworkError } from "./errors.ts";
 import { copyToClipboard } from "./clipboard.ts";
 import { notify, notifyError, offerCopyUrl } from "./notify.ts";
+import { DATA_DIR, recordLastUpload } from "./state.ts";
 import { uploadFile } from "./upload.ts";
 
-export const QUEUE_PATH = join(
-  homedir(),
-  "Library",
-  "Application Support",
-  "spootie",
-  "queue.json",
-);
+export const QUEUE_PATH = join(DATA_DIR, "queue.json");
 
 const INITIAL_BACKOFF_MS = 5_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -63,7 +57,11 @@ export class UploadQueue {
     if (this.timer !== null || this.draining) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.drain();
+      // Catch anything that escapes drain() (e.g. a failed persist write) so
+      // it logs instead of becoming an unhandled rejection.
+      this.drain().catch((err: unknown) => {
+        console.error(`spootie: queue drain failed: ${errorMessage(err)}`);
+      });
     }, delayMs);
   }
 
@@ -86,6 +84,7 @@ export class UploadQueue {
           await this.removeHead();
           this.backoffMs = INITIAL_BACKOFF_MS;
           console.log(`Uploaded queued ${name} -> ${url}`);
+          await recordLastUpload(url);
           // Don't block the drain on the user's response; and never write
           // the clipboard unprompted for late completions.
           void this.offerCopy(url);
@@ -138,6 +137,11 @@ export class UploadQueue {
     await writeFile(tempPath, `${JSON.stringify(this.entries, null, 2)}\n`);
     await rename(tempPath, QUEUE_PATH);
   }
+}
+
+/** Number of pending queued uploads (reads the queue file; used by status). */
+export async function readQueueLength(): Promise<number> {
+  return (await loadEntries()).length;
 }
 
 async function loadEntries(): Promise<QueueEntry[]> {

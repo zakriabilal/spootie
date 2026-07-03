@@ -96,13 +96,17 @@ or edit it by hand:
 
 ## Running
 
+```sh
+spootie <setup|watch|install|uninstall|pause|resume|last|status>
+```
+
 Install dependencies once:
 
 ```sh
 bun install
 ```
 
-Start watching (foreground process):
+Start watching in the foreground:
 
 ```sh
 bun run dev watch
@@ -111,6 +115,56 @@ bun run src/index.ts watch
 ```
 
 Stop it with Ctrl+C.
+
+### Run at login (LaunchAgent)
+
+```sh
+bun run dev install
+```
+
+Writes `~/Library/LaunchAgents/com.spootie.watch.plist` and loads it: the
+watcher starts now, runs at every login, and is restarted automatically if it
+crashes. Output goes to `~/Library/Logs/spootie.log`. Re-running `install`
+reinstalls cleanly (e.g. after moving the repo or updating bun). Remove it
+with:
+
+```sh
+bun run dev uninstall
+```
+
+Note: the plist hard-codes the absolute paths of your `bun` binary and this
+repo at install time — re-run `install` if either moves.
+
+### Pause / resume
+
+```sh
+bun run dev pause    # daemon silently ignores new screenshots
+bun run dev resume   # back to normal
+```
+
+Works across processes via a flag file
+(`~/Library/Application Support/spootie/paused`), so it applies to the
+LaunchAgent daemon too, immediately and without a restart. Queued uploads
+keep retrying while paused.
+
+### Last upload
+
+```sh
+bun run dev last
+```
+
+Prints the most recent successfully uploaded URL to stdout (just the URL, so
+it is pipeable; the timestamp goes to stderr). Exits 1 if nothing has been
+uploaded yet.
+
+### Status
+
+```sh
+bun run dev status
+```
+
+Shows whether the LaunchAgent is installed/loaded, paused state, queue
+length, and the last upload time.
 
 ### Screenshot folder detection
 
@@ -211,9 +265,29 @@ upload is queued instead of lost:
      upload(s) from a previous run are pending. Reconnect and confirm the
      upload completes with the **Copy URL** notification.
 
+9. **LaunchAgent flow**
+   - Quit any foreground watcher, then run `bun run dev install`. Expect the
+     `✓` lines, and `bun run dev status` shows "installed and loaded".
+   - Take a screenshot: the Upload notification must appear with no
+     foreground process running (the daemon runs under launchd; see
+     `~/Library/Logs/spootie.log`).
+   - Kill the daemon (`pkill -f "index.ts watch"`) and confirm launchd
+     restarts it (a fresh "watching for screenshots" line appears in the log).
+   - Log out and back in (or reboot) and confirm it is running again.
+   - Run `bun run dev uninstall`, then confirm a screenshot no longer
+     triggers a notification and `status` shows "not installed".
+
+10. **Pause / resume / last / status**
+    - With the watcher running, `bun run dev pause`; take a screenshot: no
+      notification, and the daemon logs "paused — ignoring ...".
+    - `bun run dev resume`; the next screenshot prompts again.
+    - After any successful upload, `bun run dev last` prints its URL
+      (`bun run dev last 2>/dev/null | pbcopy` should copy just the URL).
+    - `bun run dev status` reflects all of the above.
+
 ## Scope
 
-Included so far: the core confirm-and-upload pipeline (milestone 1), the
-`spootie setup` wizard with object auto-expiry (milestone 2), and the offline
-queue with automatic retry (milestone 3). Not yet included:
-LaunchAgent/background install, pause/resume, and `spootie last`.
+The full MVP: the core confirm-and-upload pipeline (milestone 1), the
+`spootie setup` wizard with object auto-expiry (milestone 2), the offline
+queue with automatic retry (milestone 3), and the LaunchAgent daemon with
+pause/resume, `last` and `status` (milestone 4).
