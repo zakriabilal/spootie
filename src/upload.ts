@@ -11,6 +11,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".heic": "image/heic",
   ".tiff": "image/tiff",
   ".pdf": "application/pdf",
+  ".txt": "text/plain",
 };
 
 /** Generate a long, unguessable, URL-safe object key preserving the extension. */
@@ -26,7 +27,7 @@ function contentTypeFor(filePath: string): string {
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
 
-function makeClient(config: Config): S3Client {
+export function makeClient(config: Config): S3Client {
   return new S3Client({
     region: "auto",
     endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
@@ -42,12 +43,12 @@ function makeClient(config: Config): S3Client {
 }
 
 /**
- * Upload a local file to R2 and return its public share URL.
+ * Upload a local file to R2. Returns the public share URL and the object key.
  */
 export async function uploadFile(
   filePath: string,
   config: Config,
-): Promise<string> {
+): Promise<{ url: string; key: string }> {
   const key = generateKey(filePath);
   const body = new Uint8Array(await Bun.file(filePath).arrayBuffer());
 
@@ -61,5 +62,5 @@ export async function uploadFile(
     }),
   );
 
-  return `${config.publicBaseUrl}/${key}`;
+  return { url: `${config.publicBaseUrl}/${key}`, key };
 }

@@ -9,6 +9,7 @@ import {
   notify,
   notifyError,
 } from "./notify.ts";
+import { runSetup } from "./setup.ts";
 import { uploadFile } from "./upload.ts";
 import { getScreenshotFolder, watchScreenshots } from "./watcher.ts";
 
@@ -48,7 +49,7 @@ async function handleScreenshot(path: string, config: Config): Promise<void> {
     const wantsUpload = await confirmUpload(name);
     if (!wantsUpload) return;
 
-    const url = await uploadFile(path, config);
+    const { url } = await uploadFile(path, config);
     await copyToClipboard(url);
     notify(url, "Uploaded — URL copied");
     console.log(`Uploaded ${name} -> ${url}`);
@@ -66,8 +67,18 @@ function main(): void {
     case "watch":
       void runWatch();
       break;
+    case "setup":
+      runSetup()
+        // Explicit exit: the interactive stdin reader would otherwise keep
+        // the process alive after setup finishes.
+        .then(() => process.exit(0))
+        .catch((err: unknown) => {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        });
+      break;
     default:
-      console.error("Usage: spootie watch");
+      console.error("Usage: spootie <setup|watch>");
       process.exit(1);
   }
 }

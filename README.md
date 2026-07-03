@@ -37,9 +37,42 @@ screenshot file is never modified.
 - A Cloudflare R2 bucket with **public access enabled** (an `r2.dev` public URL
   or a custom domain) and an S3 API access key pair.
 
+## Setup
+
+One-time steps in the Cloudflare dashboard:
+
+1. **Create a bucket**: **R2 Object Storage → Create bucket**. Any name; the
+   default (automatic) location is fine.
+2. **Enable public access**: open the bucket → **Settings → Public access →
+   R2.dev subdomain → Allow Access**. Copy the public URL it shows (it looks
+   like `https://pub-xxxxxxxx.r2.dev`) — that is your `publicBaseUrl`. (A
+   custom domain connected to the bucket works too.)
+3. **Create an S3 API token**: **R2 Object Storage → API → Manage API tokens →
+   Create API token**. Give it **Object Read & Write** scoped to your bucket.
+   Note the **Access Key ID** and **Secret Access Key** (shown once), and your
+   **Account ID** (shown on the R2 overview page and in the S3 endpoint).
+
+   Note: the setup wizard also sets a bucket **lifecycle rule** (auto-expiry),
+   which needs bucket-level permission. If setup warns that the lifecycle rule
+   was denied, create the token with **Admin Read & Write** instead and re-run
+   setup.
+
+Then run the wizard:
+
+```sh
+bun install
+bun run dev setup
+```
+
+It prompts for each value (re-running shows your current values as defaults),
+writes `~/.config/spootie/config.json` (mode 0600), applies the expiry
+lifecycle rule, and verifies the whole pipeline with a small test upload that
+is fetched over its public URL and then deleted.
+
 ## Configuration
 
-Create `~/.config/spootie/config.json`:
+The setup wizard writes `~/.config/spootie/config.json`; you can also create
+or edit it by hand:
 
 ```json
 {
@@ -56,8 +89,10 @@ Create `~/.config/spootie/config.json`:
   `https://<accountId>.r2.cloudflarestorage.com`.
 - `publicBaseUrl` — the public base URL of the bucket. The share URL is
   `publicBaseUrl + "/" + key`.
-- `expiryDays` — reserved for a later milestone (object lifecycle). Currently
-  unused by the upload path; defaults to `7` if omitted.
+- `expiryDays` — how long uploads stay before R2 auto-deletes them, enforced
+  by a bucket lifecycle rule (rule ID `spootie-expiry`) that `spootie setup`
+  applies. Defaults to `7` if omitted. If you change it by hand, re-run
+  `spootie setup` to update the rule.
 
 ## Running
 
@@ -93,9 +128,16 @@ considered. Screen recordings are ignored.
 
 1. **Setup**
    - `brew install alerter`
-   - Create `~/.config/spootie/config.json` with valid R2 credentials for a
-     public bucket.
    - `bun install`
+   - Run `bun run dev setup` and enter your R2 details. Expect:
+     `✓ Config saved`, `✓ Lifecycle rule applied (... days)`, and
+     `✓ Test upload publicly reachable: https://...` (open that URL pattern
+     mentally — the test object itself is deleted right after).
+   - Re-run `bun run dev setup` and press Enter through every prompt: it
+     should keep all current values (the secret shows only its last 4 chars).
+   - Check the file mode: `ls -l ~/.config/spootie/config.json` shows `-rw-------`.
+   - In the Cloudflare dashboard, confirm the bucket has a lifecycle rule named
+     `spootie-expiry` matching your `expiryDays`.
 
 2. **Start the watcher**
    - Run `bun run dev watch`.
@@ -130,6 +172,7 @@ considered. Screen recordings are ignored.
 
 ## Scope
 
-This is milestone 1: the core confirm-and-upload pipeline, happy path. Not yet
-included: setup wizard, object expiry/lifecycle rules, offline queueing,
-LaunchAgent/background install, pause/resume, and `spootie last`.
+Included so far: the core confirm-and-upload pipeline (milestone 1) and the
+`spootie setup` wizard with object auto-expiry (milestone 2). Not yet
+included: offline queueing, LaunchAgent/background install, pause/resume, and
+`spootie last`.

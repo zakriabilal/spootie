@@ -1,5 +1,6 @@
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export interface Config {
   accountId: string;
@@ -78,4 +79,29 @@ export async function loadConfig(): Promise<Config> {
     publicBaseUrl,
     expiryDays,
   };
+}
+
+/**
+ * Best-effort read of an existing config for use as setup-wizard defaults.
+ * Returns null (never throws) if the file is missing or unreadable.
+ */
+export async function readExistingConfig(): Promise<Record<string, unknown> | null> {
+  try {
+    const raw: unknown = await Bun.file(CONFIG_PATH).json();
+    return typeof raw === "object" && raw !== null
+      ? (raw as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Write the config file with mode 0600, creating the directory if needed. */
+export async function saveConfig(config: Config): Promise<void> {
+  await mkdir(dirname(CONFIG_PATH), { recursive: true, mode: 0o700 });
+  await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  // `mode` only applies when the file is created; enforce 0600 on rewrite too.
+  await chmod(CONFIG_PATH, 0o600);
 }
