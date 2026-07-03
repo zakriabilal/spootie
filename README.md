@@ -28,8 +28,11 @@ screenshot file is never modified.
   brew install alerter
   ```
 
-  The first actionable notification will prompt for notification permission;
-  allow it.
+  The first notification will trigger a macOS permission prompt; allow it.
+  Then, in **System Settings → Notifications → alerter**, set the notification
+  style to **Alerts** — the default "Banners" style auto-dismisses after a few
+  seconds and hides the **Upload** button. Clicking the notification body also
+  counts as confirming the upload.
 
 - A Cloudflare R2 bucket with **public access enabled** (an `r2.dev` public URL
   or a custom domain) and an S3 API access key pair.

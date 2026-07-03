@@ -34,8 +34,8 @@ interface AlerterResult {
 
 /**
  * Show a notification with an "Upload" action button and wait for the user.
- * Resolves true only if the user clicks "Upload"; false if they dismiss,
- * ignore, or it times out.
+ * Resolves true if the user clicks "Upload" or the notification body; false
+ * if they dismiss, ignore, or it times out.
  */
 export async function confirmUpload(fileName: string): Promise<boolean> {
   if (!isAlerterInstalled()) throw new AlerterMissingError();
@@ -69,6 +69,10 @@ export async function confirmUpload(fileName: string): Promise<boolean> {
     return false;
   }
 
+  // "Upload" is the only affirmative action, so a click on the notification
+  // body also counts — the action button is only visible on hover and only
+  // with the "Alerts" notification style.
+  if (result.activationType === "contentsClicked") return true;
   return (
     result.activationType === "actionClicked" &&
     result.activationValue === "Upload"

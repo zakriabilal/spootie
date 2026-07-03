@@ -34,6 +34,10 @@ function makeClient(config: Config): S3Client {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
     },
+    // R2 does not support the AWS SDK's default flexible checksums
+    // (x-amz-checksum-*); without these settings uploads are rejected.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
 }
 

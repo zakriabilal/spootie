@@ -56,10 +56,15 @@ export async function loadConfig(): Promise<Config> {
     }
   }
 
-  const expiryDays =
-    typeof obj.expiryDays === "number" && obj.expiryDays > 0
-      ? obj.expiryDays
-      : 7;
+  let expiryDays = 7;
+  if (obj.expiryDays !== undefined) {
+    if (typeof obj.expiryDays !== "number" || obj.expiryDays <= 0) {
+      throw new Error(
+        `Config field "expiryDays" must be a positive number in ${CONFIG_PATH}.`,
+      );
+    }
+    expiryDays = obj.expiryDays;
+  }
 
   // Normalise: strip any trailing slash from the public base URL so we can
   // always join with a single "/".
