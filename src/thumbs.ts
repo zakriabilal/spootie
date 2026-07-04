@@ -11,7 +11,7 @@
  * result in a single logged line and no thumbnail — never a crash, never an
  * unhandled rejection, and never any effect on the upload result.
  */
-import { chmod, unlink } from "node:fs/promises";
+import { chmod, unlink, writeFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { errorMessage } from "./errors.ts";
 import { markThumbGenerated } from "./history.ts";
@@ -83,7 +83,48 @@ export const generateThumbnail = (key: string, sourcePath: string): void => {
     });
 };
 
-const createThumbnail = async (key: string, sourcePath: string): Promise<void> => {
+/**
+ * Fire-and-forget thumbnail generation for freshly-uploaded bytes that have no
+ * source file on disk (the dashboard drop zone holds the file in memory). Writes
+ * the bytes to a private temp file inside {@link THUMBS_DIR} carrying the object
+ * key (so its extension drives {@link createThumbnail}'s image-type check and
+ * sips reads a real path), runs the thumbnail, then always removes the temp
+ * file. Like {@link generateThumbnail} it absorbs every error, so it can never
+ * surface as an unhandled rejection — and the `finally` guarantees the temp file
+ * is cleaned up on every path, including a thrown createThumbnail.
+ */
+export const generateThumbnailFromBytes = (
+    key: string,
+    fileName: string,
+    bytes: Uint8Array,
+): void => {
+    void thumbnailFromBytes(key, fileName, bytes).catch((err: unknown) => {
+        console.error(`spootie: thumbnail generation failed for ${key}: ${errorMessage(err)}`);
+    });
+};
+
+const thumbnailFromBytes = async (
+    key: string,
+    fileName: string,
+    bytes: Uint8Array,
+): Promise<void> => {
+    // Skip non-images up front so we never write a temp file we can't use. The
+    // key carries the same (lowercased) extension as the original name.
+    if (!IMAGE_EXTENSIONS.has(extname(fileName).toLowerCase())) return;
+
+    await ensurePrivateDir(THUMBS_DIR);
+    // A private, unique temp path alongside the thumbnails. It is never served:
+    // serveThumb only ever hands out `<key>.jpg` files, and this is `.<key>`.
+    const tempPath = join(THUMBS_DIR, `.incoming-${key}`);
+    try {
+        await writeFile(tempPath, bytes, { mode: 0o600 });
+        await createThumbnail(key, tempPath);
+    } finally {
+        await unlink(tempPath).catch(() => {});
+    }
+};
+
+export const createThumbnail = async (key: string, sourcePath: string): Promise<void> => {
     if (!IMAGE_EXTENSIONS.has(extname(sourcePath).toLowerCase())) return;
 
     const thumbPath = thumbPathForKey(key);

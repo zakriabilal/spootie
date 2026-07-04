@@ -89,6 +89,43 @@
     .dot.live { background: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
     .dot.off  { background: var(--queued); animation: pulse 1.2s ease-in-out infinite; }
 
+    /* ---- drop zone (upload any file) ---- */
+    .dropzone {
+        margin: 18px 20px 6px;
+        padding: 26px 20px;
+        border: 1.5px dashed var(--border-strong);
+        border-radius: 10px;
+        background: var(--bg-elev);
+        text-align: center;
+        cursor: pointer;
+        user-select: none;
+        transition: border-color 0.14s ease, background 0.14s ease;
+    }
+    .dropzone:hover { border-color: rgba(255, 255, 255, 0.2); }
+    .dropzone:focus-visible {
+        outline: none;
+        border-color: var(--border-strong);
+    }
+    .dropzone.drag {
+        border-color: var(--accent);
+        background: rgba(125, 217, 146, 0.06);
+    }
+    .dropzone.err { border-color: rgba(224, 112, 112, 0.5); }
+    .dz-title {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--fg);
+        margin-bottom: 4px;
+    }
+    .dropzone.drag .dz-title { color: var(--accent); }
+    .dropzone.done .dz-title { color: var(--accent); }
+    .dropzone.err .dz-title { color: var(--danger); }
+    .dz-hint {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--faint);
+    }
+
     /* ---- offline banner ---- */
     .banner {
         font-family: var(--mono);
@@ -280,6 +317,7 @@
         .row { padding-left: 16px; padding-right: 16px; }
         .bar { padding: 0 16px; }
         .actions { opacity: 1; }
+        .dropzone { margin-left: 16px; margin-right: 16px; }
     }
 </style>
 
@@ -432,6 +470,115 @@
         `;
     }
 
+    /**
+     * Large drop zone at the top of the page: drop files here (or click to
+     * browse) and each is POSTed to /api/upload as its own multipart request.
+     * The daemon uploads to R2, records history, and copies the share URL
+     * server-side; new items surface via the existing 2s poll, so nothing is
+     * injected here. Files upload sequentially so the clipboard ends on the
+     * LAST file's URL deterministically.
+     */
+    function DropZone() {
+        const [drag, setDrag] = useState(false);
+        const [status, setStatus] = useState(null); // null | {kind, ...}
+        const inputRef = useRef(null);
+        const timers = useRef([]);
+
+        useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+
+        // Stop the browser from navigating to a file dropped anywhere on the
+        // page (outside the zone) — that would blow the dashboard away.
+        useEffect(() => {
+            const prevent = (e) => e.preventDefault();
+            window.addEventListener("dragover", prevent);
+            window.addEventListener("drop", prevent);
+            return () => {
+                window.removeEventListener("dragover", prevent);
+                window.removeEventListener("drop", prevent);
+            };
+        }, []);
+
+        const flashDone = (n) => {
+            setStatus({ kind: "done", n });
+            timers.current.push(setTimeout(() => setStatus(null), 2400));
+        };
+
+        const uploadAll = async (fileList) => {
+            const files = Array.from(fileList || []);
+            if (files.length === 0) return;
+            let lastUrl = "";
+            for (let i = 0; i < files.length; i++) {
+                setStatus({ kind: "uploading", i: i + 1, n: files.length, name: files[i].name });
+                try {
+                    const fd = new FormData();
+                    // Field name must be "file" — the server reads form.get("file").
+                    fd.append("file", files[i]);
+                    // No content-type header: the browser sets the multipart
+                    // boundary. The token rides the query string like every call.
+                    const res = await fetch(withToken("/api/upload"), { method: "POST", body: fd });
+                    if (!res.ok) {
+                        let msg = "Upload failed";
+                        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
+                        throw new Error(msg);
+                    }
+                    const j = await res.json();
+                    if (j && j.url) lastUrl = j.url;
+                } catch (e) {
+                    setStatus({ kind: "error", msg: (e && e.message) || "Upload failed" });
+                    return;
+                }
+            }
+            // The daemon already copied the URL server-side; also copy the last
+            // file's URL here as belt-and-braces, tolerating a rejection.
+            if (lastUrl) { try { await navigator.clipboard.writeText(lastUrl); } catch (_) {} }
+            flashDone(files.length);
+        };
+
+        const onDrop = (e) => {
+            e.preventDefault();
+            setDrag(false);
+            uploadAll(e.dataTransfer && e.dataTransfer.files);
+        };
+        const onPick = (e) => {
+            uploadAll(e.target.files);
+            e.target.value = ""; // let the same file be re-picked
+        };
+        const openPicker = () => { if (inputRef.current) inputRef.current.click(); };
+        const onKeyDown = (e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); }
+        };
+
+        let title = "Drop files to upload";
+        if (status && status.kind === "uploading") {
+            title = "Uploading " + status.i + " of " + status.n + "…";
+        } else if (status && status.kind === "done") {
+            title = status.n > 1 ? status.n + " files uploaded — link copied" : "Uploaded — link copied";
+        } else if (status && status.kind === "error") {
+            title = status.msg;
+        }
+        const cls = "dropzone"
+            + (drag ? " drag" : "")
+            + (status && status.kind === "done" ? " done" : "")
+            + (status && status.kind === "error" ? " err" : "");
+
+        return html`
+            <div
+                class=${cls}
+                role="button"
+                tabindex="0"
+                onClick=${openPicker}
+                onKeyDown=${onKeyDown}
+                onDragEnter=${(e) => { e.preventDefault(); setDrag(true); }}
+                onDragOver=${(e) => { e.preventDefault(); setDrag(true); }}
+                onDragLeave=${(e) => { e.preventDefault(); setDrag(false); }}
+                onDrop=${onDrop}>
+                <input ref=${inputRef} type="file" multiple hidden onChange=${onPick} />
+                <div class="dz-title">${title}</div>
+                <div class="dz-hint">Drop files to upload · click to browse</div>
+            </div>
+        `;
+    }
+
     function App() {
         const [items, setItems] = useState(null); // null = first load
         const [online, setOnline] = useState(true);
@@ -486,6 +633,8 @@
                     ${authFailed ? "reauth" : online ? "watching" : "reconnecting"}
                 </div>
             </header>
+
+            <${DropZone} />
 
             ${authFailed
                 ? html`<div class="banner">Session expired — run <code>spootie ui</code> in your terminal to reopen the dashboard.</div>`

@@ -2,14 +2,22 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, unlinkSync } from "node:fs";
 import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { copyToClipboard } from "./clipboard.ts";
 import type { Config } from "./config.ts";
 import { DASHBOARD_HTML_ASSET, PREACT_STANDALONE_ASSET } from "./embedded-assets.ts";
-import { errorMessage } from "./errors.ts";
-import { readHistory, readLastUpload, removeFromHistory } from "./history.ts";
+import { errorMessage, errorStatus } from "./errors.ts";
+import { readHistory, readLastUpload, recordUpload, removeFromHistory } from "./history.ts";
 import type { UploadQueue } from "./queue.ts";
 import { DATA_DIR, ensurePrivateDir, isPaused, setPaused } from "./state.ts";
-import { deleteThumbnail, thumbPathForKey } from "./thumbs.ts";
-import { deleteObject } from "./upload.ts";
+import { deleteThumbnail, generateThumbnailFromBytes, thumbPathForKey } from "./thumbs.ts";
+import { contentDispositionAttachment, deleteObject, generateKey, uploadBytes } from "./upload.ts";
+
+/**
+ * Largest multipart body the dashboard upload route accepts (512 MB), set as
+ * Bun.serve's maxRequestBodySize below. Big enough for a video drop, bounded so
+ * a single request can't exhaust memory buffering the body.
+ */
+const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
 
 /** Where the running daemon advertises its dashboard port to the CLI. */
 export const UI_INFO_PATH = join(DATA_DIR, "ui.json");
@@ -174,6 +182,73 @@ const handlePause = async (req: Request): Promise<Response> => {
 };
 
 /**
+ * Upload a single dropped file to R2 from the dashboard drop zone. Accepts one
+ * `multipart/form-data` body with a single `file` field (the UI sends several
+ * files as sequential requests). Like handleDelete/handlePause this is a
+ * mutation, so the caller has already enforced the token + Origin checks.
+ *
+ * On success: records the upload in history under its ORIGINAL name, copies the
+ * share URL to the clipboard (best-effort — never fails the request), kicks off
+ * a detached local thumbnail for images, and returns { ok, url, key }. A failed
+ * R2 upload records nothing and maps to 413 (too large, if the error says so) or
+ * 502, mirroring handleDelete's mapping.
+ */
+const handleUpload = async (req: Request, config: Config): Promise<Response> => {
+    const contentType = req.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("multipart/form-data")) {
+        return json({ error: "Expected multipart/form-data" }, 400);
+    }
+
+    // Infer the exact FormData type from req.formData() — annotating it as the
+    // global FormData resolves to a conflicting type under our @types setup.
+    const form = await req.formData().catch(() => null);
+    if (form === null) {
+        return json({ error: "Could not parse multipart form body" }, 400);
+    }
+
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+        return json({ error: "Expected a non-empty 'file' field" }, 400);
+    }
+
+    const fileName = file.name.trim() === "" ? "download" : file.name;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const key = generateKey(fileName);
+    // Trust the browser's type but never send an empty ContentType to R2.
+    const uploadType = file.type.trim() === "" ? "application/octet-stream" : file.type;
+    const disposition = contentDispositionAttachment(fileName);
+
+    let url: string;
+    try {
+        ({ url } = await uploadBytes(bytes, key, uploadType, disposition, config));
+    } catch (err) {
+        // Nothing was recorded, so there is no half-written history entry to undo.
+        if (errorStatus(err) === 413) {
+            return json({ error: "File is too large for the bucket" }, 413);
+        }
+        return json({ error: `Could not upload to R2: ${errorMessage(err)}` }, 502);
+    }
+
+    // Only reached on a successful upload: record it, then best-effort copy.
+    await recordUpload({
+        key,
+        url,
+        fileName,
+        uploadedAt: new Date().toISOString(),
+    });
+    // Best-effort clipboard copy — already failure-tolerant, but keep a stray
+    // pbcopy failure (e.g. no clipboard) from turning a good upload into a 502.
+    await copyToClipboard(url).catch((err: unknown) => {
+        console.error(`spootie: could not copy uploaded URL to clipboard: ${errorMessage(err)}`);
+    });
+    // Local-only preview; detached so it never delays the response, and it owns
+    // its temp file's lifecycle (write -> thumb -> unlink) internally.
+    generateThumbnailFromBytes(key, fileName, bytes);
+
+    return json({ ok: true, url, key });
+};
+
+/**
  * Serve a local thumbnail by object key. The key arrives as a query param (an
  * <img src> can't send an auth header, so the token rides the query string like
  * everything else). thumbPathForKey rejects any key with a separator, a `..`, or
@@ -246,6 +321,9 @@ export const startUiServer = async ({
     const server = Bun.serve({
         hostname: "127.0.0.1",
         port: 0,
+        // Bound the drop-zone upload body deliberately; the default is far
+        // smaller than a large file drop, which would otherwise be truncated.
+        maxRequestBodySize: MAX_UPLOAD_BYTES,
         async fetch(req) {
             if (!isAllowedHost(req.headers.get("host"), boundPort)) {
                 return new Response("Forbidden", { status: 403 });
@@ -293,6 +371,12 @@ export const startUiServer = async ({
                     return new Response("Forbidden", { status: 403 });
                 }
                 return handlePause(req);
+            }
+            if (pathname === "/api/upload" && req.method === "POST") {
+                if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+                    return new Response("Forbidden", { status: 403 });
+                }
+                return handleUpload(req, config);
             }
             if (req.method === "GET") {
                 // Static pages carry no secrets; the dashboard reads its token from the

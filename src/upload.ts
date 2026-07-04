@@ -65,6 +65,76 @@ export const uploadFile = async (
 };
 
 /**
+ * Upload raw bytes to R2 under a caller-chosen key, with an explicit content
+ * type and Content-Disposition. Used by the dashboard drop zone, which has the
+ * bytes in memory (from a multipart upload) rather than a file on disk, and
+ * wants recipients to download the object under its original name. Returns the
+ * public share URL and the key it was stored under.
+ */
+export const uploadBytes = async (
+    body: Uint8Array,
+    key: string,
+    contentType: string,
+    contentDisposition: string,
+    config: Config,
+): Promise<{ url: string; key: string }> => {
+    const client = makeClient(config);
+    await client.send(
+        new PutObjectCommand({
+            Bucket: config.bucket,
+            Key: key,
+            Body: body,
+            ContentType: contentType,
+            ContentDisposition: contentDisposition,
+        }),
+    );
+
+    return { url: `${config.publicBaseUrl}/${key}`, key };
+};
+
+/**
+ * Percent-encode a string as an RFC 5987 ext-value (the `filename*` form). Only
+ * the RFC 5987 attr-char set is left unescaped: `encodeURIComponent` already
+ * encodes everything outside `A-Za-z0-9-_.!~*'()`, and we additionally encode
+ * `* ' ( )` — which are not attr-chars — leaving only attr-chars unescaped.
+ */
+const encodeRFC5987 = (value: string): string =>
+    encodeURIComponent(value).replace(
+        /['()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+
+/**
+ * Build a `Content-Disposition: attachment` header that makes a recipient's
+ * browser download the object under its original file name (RFC 6266). The name
+ * is reduced to its basename (any path separators dropped) and control
+ * characters are stripped, so it can neither imply a path on the recipient nor
+ * inject header bytes. Emits both:
+ *
+ *  - `filename="…"`  — an ASCII-only fallback for legacy clients, with every
+ *    non-printable-ASCII byte and the quote/backslash that would break the
+ *    quoted-string replaced by `_`.
+ *  - `filename*=UTF-8''…` — the exact original name, percent-encoded per RFC
+ *    5987, which modern clients prefer.
+ */
+export const contentDispositionAttachment = (fileName: string): string => {
+    // Drop any path components a hostile name might carry, keep the basename.
+    const base = fileName.split(/[/\\]/).pop() ?? fileName;
+    // Strip C0 control chars (incl. CR/LF, which could split the header) + DEL.
+    // Done by code point rather than a control-char regex (which oxlint bans).
+    const clean = [...base]
+        .filter((ch) => {
+            const code = ch.codePointAt(0) ?? 0;
+            return code > 0x1f && code !== 0x7f;
+        })
+        .join("");
+    const safe = clean.length > 0 ? clean : "download";
+    // ASCII fallback: non-printable-ASCII -> "_", then quote/backslash -> "_".
+    const ascii = safe.replace(/[^\u0020-\u007e]/g, "_").replace(/["\\]/g, "_");
+    return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeRFC5987(safe)}`;
+};
+
+/**
  * Delete an object from R2 by its key, using the same signing/client approach
  * as {@link uploadFile}.
  */
