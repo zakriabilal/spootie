@@ -30,7 +30,7 @@ const LIFECYCLE_RULE_ID = "spootie-expiry";
  * apply the object-expiry lifecycle rule, and verify public access with a
  * round-trip test upload.
  */
-export async function runSetup(): Promise<void> {
+export const runSetup = async (): Promise<void> => {
   console.log("spootie setup");
   console.log("Prompts show the current value in [brackets]; press Enter to keep it.\n");
 
@@ -50,7 +50,7 @@ export async function runSetup(): Promise<void> {
   await verifyUploadStep(client, config);
 
   console.log("\nSetup complete. Run `spootie watch` to start uploading screenshots.");
-}
+};
 
 // --- prompts ---------------------------------------------------------------
 
@@ -59,13 +59,21 @@ export async function runSetup(): Promise<void> {
 // the console async iterator instead: "" is an empty line, null is EOF.
 const stdinLines = console[Symbol.asyncIterator]();
 
-async function askLine(question: string): Promise<string | null> {
+const askLine = async (question: string): Promise<string | null> => {
   process.stdout.write(question);
   const { value, done } = await stdinLines.next();
   return done ? null : (value as string);
-}
+};
 
-async function promptForConfig(existing: Record<string, unknown>): Promise<Config> {
+// The explicit variable-type annotation (not just an arrow return type) is what
+// lets TypeScript treat calls to this as ending control flow — see the `input`
+// null-narrowing in promptText/promptExpiryDays below.
+const abortSetup: () => never = () => {
+  console.error("\nSetup aborted (no input).");
+  process.exit(1);
+};
+
+const promptForConfig = async (existing: Record<string, unknown>): Promise<Config> => {
   const current = (key: string): string | undefined => {
     const value = existing[key];
     return typeof value === "string" && value.trim() !== "" ? value : undefined;
@@ -90,13 +98,13 @@ async function promptForConfig(existing: Record<string, unknown>): Promise<Confi
   const expiryDays = await promptExpiryDays(currentExpiry);
 
   return { accountId, accessKeyId, secretAccessKey, bucket, publicBaseUrl, expiryDays };
-}
+};
 
-async function promptText(
+const promptText = async (
   label: string,
   currentValue?: string,
   opts: { mask?: boolean } = {},
-): Promise<string> {
+): Promise<string> => {
   const shown =
     currentValue === undefined
       ? undefined
@@ -113,9 +121,9 @@ async function promptText(
     if (currentValue !== undefined) return currentValue;
     console.log("A value is required.");
   }
-}
+};
 
-async function promptExpiryDays(currentValue: number): Promise<number> {
+const promptExpiryDays = async (currentValue: number): Promise<number> => {
   for (;;) {
     const input = await askLine(
       `expiryDays (uploads auto-delete after this many days) [${currentValue}]: `,
@@ -127,20 +135,14 @@ async function promptExpiryDays(currentValue: number): Promise<number> {
     if (Number.isInteger(value) && value > 0) return value;
     console.log("Enter a positive whole number of days.");
   }
-}
+};
 
-function maskSecret(value: string): string {
-  return value.length > 4 ? `****${value.slice(-4)}` : "****";
-}
-
-function abortSetup(): never {
-  console.error("\nSetup aborted (no input).");
-  process.exit(1);
-}
+const maskSecret = (value: string): string =>
+  value.length > 4 ? `****${value.slice(-4)}` : "****";
 
 // --- lifecycle rule ---------------------------------------------------------
 
-async function applyLifecycleStep(client: S3Client, config: Config): Promise<void> {
+const applyLifecycleStep = async (client: S3Client, config: Config): Promise<void> => {
   try {
     await applyLifecycleRule(client, config);
     console.log(`✓ Lifecycle rule applied (objects expire after ${config.expiryDays} days)`);
@@ -157,9 +159,9 @@ async function applyLifecycleStep(client: S3Client, config: Config): Promise<voi
     console.warn(`! Could not set the lifecycle rule: ${errorMessage(err)}`);
     console.warn("  Uploads will still work, but old screenshots will NOT auto-expire.");
   }
-}
+};
 
-async function applyLifecycleRule(client: S3Client, config: Config): Promise<void> {
+const applyLifecycleRule = async (client: S3Client, config: Config): Promise<void> => {
   // PutBucketLifecycleConfiguration replaces the whole configuration, so
   // preserve any rules the user set outside spootie.
   let rules: LifecycleRule[] = [];
@@ -196,11 +198,11 @@ async function applyLifecycleRule(client: S3Client, config: Config): Promise<voi
   if (applied?.Expiration?.Days !== config.expiryDays) {
     throw new Error("lifecycle rule read-back did not match what was written");
   }
-}
+};
 
 // --- verified test upload ----------------------------------------------------
 
-async function verifyUploadStep(client: S3Client, config: Config): Promise<void> {
+const verifyUploadStep = async (client: S3Client, config: Config): Promise<void> => {
   const tempPath = join(tmpdir(), `spootie-setup-test-${Date.now()}.txt`);
   await Bun.write(tempPath, "spootie setup test\n");
 
@@ -243,12 +245,12 @@ async function verifyUploadStep(client: S3Client, config: Config): Promise<void>
   }
 
   if (process.exitCode === 1) process.exit(1);
-}
+};
 
-function failBadCredentials(err: unknown): never {
+const failBadCredentials = (err: unknown): never => {
   console.error(
     `✗ R2 rejected the credentials (${errorName(err) || "auth error"}).\n` +
       "  Check accountId, accessKeyId and secretAccessKey, then re-run `spootie setup`.",
   );
   process.exit(1);
-}
+};

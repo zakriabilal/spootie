@@ -1,6 +1,7 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { ensurePrivateDir } from "./state.ts";
 
 export interface Config {
   accountId: string;
@@ -25,7 +26,7 @@ const REQUIRED_STRING_KEYS = [
  * Load and validate the config file. Throws with a clear, user-facing message
  * if the file is missing or malformed.
  */
-export async function loadConfig(): Promise<Config> {
+export const loadConfig = async (): Promise<Config> => {
   const file = Bun.file(CONFIG_PATH);
 
   if (!(await file.exists())) {
@@ -79,13 +80,13 @@ export async function loadConfig(): Promise<Config> {
     publicBaseUrl,
     expiryDays,
   };
-}
+};
 
 /**
  * Best-effort read of an existing config for use as setup-wizard defaults.
  * Returns null (never throws) if the file is missing or unreadable.
  */
-export async function readExistingConfig(): Promise<Record<string, unknown> | null> {
+export const readExistingConfig = async (): Promise<Record<string, unknown> | null> => {
   try {
     const raw: unknown = await Bun.file(CONFIG_PATH).json();
     return typeof raw === "object" && raw !== null
@@ -94,14 +95,14 @@ export async function readExistingConfig(): Promise<Record<string, unknown> | nu
   } catch {
     return null;
   }
-}
+};
 
 /** Write the config file with mode 0600, creating the directory if needed. */
-export async function saveConfig(config: Config): Promise<void> {
-  await mkdir(dirname(CONFIG_PATH), { recursive: true, mode: 0o700 });
+export const saveConfig = async (config: Config): Promise<void> => {
+  await ensurePrivateDir(dirname(CONFIG_PATH));
   await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, {
     mode: 0o600,
   });
   // `mode` only applies when the file is created; enforce 0600 on rewrite too.
   await chmod(CONFIG_PATH, 0o600);
-}
+};

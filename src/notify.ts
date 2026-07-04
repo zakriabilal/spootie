@@ -7,7 +7,10 @@
  * notification`, which is fire-and-forget.
  */
 
-const ALERTER_BIN = "alerter";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+const VENDORED_ALERTER = join(import.meta.dir, "..", "vendor", "alerter");
 const APP_TITLE = "spootie";
 
 /** How long the actionable notification stays interactive, in seconds. */
@@ -16,16 +19,23 @@ const ACTION_TIMEOUT_SECONDS = 60;
 export class AlerterMissingError extends Error {
   constructor() {
     super(
-      "The 'alerter' command was not found. Install it with:\n" +
-        "  brew install alerter",
+      `The bundled 'alerter' binary is missing at ${VENDORED_ALERTER}. ` +
+        "Restore vendor/alerter (it is committed to the repo).",
     );
     this.name = "AlerterMissingError";
   }
 }
 
-export function isAlerterInstalled(): boolean {
-  return Bun.which(ALERTER_BIN) !== null;
-}
+/**
+ * Path to the vendored alerter binary, or null if it is missing. Only the
+ * vendored binary is accepted: askAction spawns it with double-dash flags
+ * (--json, --title, --actions) that only this custom build understands, so a
+ * different 'alerter' on PATH would silently mis-parse and drop every prompt.
+ */
+const alerterPath = (): string | null =>
+  existsSync(VENDORED_ALERTER) ? VENDORED_ALERTER : null;
+
+export const isAlerterInstalled = (): boolean => alerterPath() !== null;
 
 interface AlerterResult {
   activationType?: string;
@@ -37,44 +47,43 @@ interface AlerterResult {
  * Resolves true if the user clicks "Upload" or the notification body; false
  * if they dismiss, ignore, or it times out.
  */
-export function confirmUpload(fileName: string): Promise<boolean> {
-  return askAction("New screenshot", fileName, "Upload");
-}
+export const confirmUpload = (fileName: string): Promise<boolean> =>
+  askAction("New screenshot", fileName, "Upload");
 
 /**
  * After a queued upload completes, offer to copy its URL (we must not clobber
  * the clipboard unprompted). Resolves true if the user clicks "Copy URL" or
  * the notification body.
  */
-export function offerCopyUrl(url: string): Promise<boolean> {
-  return askAction("Queued upload finished", url, "Copy URL");
-}
+export const offerCopyUrl = (url: string): Promise<boolean> =>
+  askAction("Queued upload finished", url, "Copy URL");
 
 /**
  * Show an actionable notification with a single affirmative button and wait.
  * Resolves true if the user clicks the button or the notification body; false
  * if they dismiss, ignore, or it times out.
  */
-async function askAction(
+const askAction = async (
   subtitle: string,
   message: string,
   action: string,
-): Promise<boolean> {
-  if (!isAlerterInstalled()) throw new AlerterMissingError();
+): Promise<boolean> => {
+  const alerter = alerterPath();
+  if (alerter === null) throw new AlerterMissingError();
 
   const proc = Bun.spawn(
     [
-      ALERTER_BIN,
-      "-json",
-      "-title",
+      alerter,
+      "--json",
+      "--title",
       APP_TITLE,
-      "-subtitle",
+      "--subtitle",
       subtitle,
-      "-message",
+      "--message",
       message,
-      "-actions",
+      "--actions",
       action,
-      "-timeout",
+      "--timeout",
       String(ACTION_TIMEOUT_SECONDS),
     ],
     { stdout: "pipe", stderr: "pipe" },
@@ -99,19 +108,19 @@ async function askAction(
     result.activationType === "actionClicked" &&
     result.activationValue === action
   );
-}
+};
 
 /** Fire-and-forget informational notification. */
-export function notify(message: string, subtitle?: string): void {
+export const notify = (message: string, subtitle?: string): void => {
   displayNotification(message, subtitle);
-}
+};
 
 /** Fire-and-forget error notification. */
-export function notifyError(message: string): void {
+export const notifyError = (message: string): void => {
   displayNotification(message, "Error");
-}
+};
 
-function displayNotification(message: string, subtitle?: string): void {
+const displayNotification = (message: string, subtitle?: string): void => {
   const script =
     `display notification ${quote(message)} ` +
     `with title ${quote(APP_TITLE)}` +
@@ -122,9 +131,8 @@ function displayNotification(message: string, subtitle?: string): void {
     stdout: "ignore",
     stderr: "ignore",
   });
-}
+};
 
 /** Quote a string for safe embedding in an AppleScript literal. */
-function quote(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
+const quote = (value: string): string =>
+  `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;

@@ -1,6 +1,7 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { ensurePrivateDir } from "./state.ts";
 
 const LABEL = "com.spootie.watch";
 export const PLIST_PATH = join(
@@ -9,9 +10,15 @@ export const PLIST_PATH = join(
   "LaunchAgents",
   `${LABEL}.plist`,
 );
-export const LOG_PATH = join(homedir(), "Library", "Logs", "spootie.log");
+export const LOG_PATH = join(
+  homedir(),
+  ".config",
+  "spootie",
+  "logs",
+  "spootie.log",
+);
 
-function plistContent(): string {
+const plistContent = (): string => {
   // LaunchAgents run without the user's shell PATH, so everything must be
   // absolute: the bun binary, the entry script, and a PATH that lets the
   // daemon find `alerter` (and pbcopy/osascript in /usr/bin).
@@ -48,34 +55,33 @@ function plistContent(): string {
 </dict>
 </plist>
 `;
-}
+};
 
-function launchctl(args: string[]): { ok: boolean; output: string } {
+const launchctl = (args: string[]): { ok: boolean; output: string } => {
   const result = Bun.spawnSync(["launchctl", ...args], {
     stdout: "pipe",
     stderr: "pipe",
   });
   const output = `${result.stdout.toString()}${result.stderr.toString()}`.trim();
   return { ok: result.exitCode === 0, output };
-}
+};
 
-function guiDomain(): string {
-  return `gui/${process.getuid?.() ?? 501}`;
-}
+const guiDomain = (): string => `gui/${process.getuid?.() ?? 501}`;
 
 /** True if launchd currently has the agent loaded. */
-export function isAgentLoaded(): boolean {
-  return launchctl(["print", `${guiDomain()}/${LABEL}`]).ok;
-}
+export const isAgentLoaded = (): boolean =>
+  launchctl(["print", `${guiDomain()}/${LABEL}`]).ok;
 
-export function isAgentInstalled(): Promise<boolean> {
-  return Bun.file(PLIST_PATH).exists();
-}
+export const isAgentInstalled = (): Promise<boolean> =>
+  Bun.file(PLIST_PATH).exists();
 
 /** Write the plist and (re)load it. Safe to run when already installed. */
-export async function installAgent(): Promise<void> {
+export const installAgent = async (): Promise<void> => {
   await mkdir(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
-  await mkdir(join(homedir(), "Library", "Logs"), { recursive: true });
+  // launchd will not create the log directory itself; make sure it exists
+  // (private — the log records upload URLs) before the plist points
+  // StandardOut/ErrorPath at it.
+  await ensurePrivateDir(dirname(LOG_PATH));
   await Bun.write(PLIST_PATH, plistContent());
   console.log(`✓ LaunchAgent written to ${PLIST_PATH}`);
 
@@ -98,10 +104,10 @@ export async function installAgent(): Promise<void> {
 
   console.log("✓ Loaded — spootie watch now runs at login (and restarts on crash)");
   console.log(`  Logs: ${LOG_PATH}`);
-}
+};
 
 /** Unload the agent and remove the plist. Safe to run when not installed. */
-export async function uninstallAgent(): Promise<void> {
+export const uninstallAgent = async (): Promise<void> => {
   const wasInstalled = await isAgentInstalled();
 
   const bootout = launchctl(["bootout", `${guiDomain()}/${LABEL}`]);
@@ -117,4 +123,4 @@ export async function uninstallAgent(): Promise<void> {
   } else {
     console.log("LaunchAgent was not installed; nothing to remove.");
   }
-}
+};
