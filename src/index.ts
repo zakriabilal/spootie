@@ -2,13 +2,7 @@
 import { basename } from "node:path";
 import { loadConfig, type Config } from "./config.ts";
 import { copyToClipboard } from "./clipboard.ts";
-import {
-  AlerterMissingError,
-  confirmUpload,
-  isAlerterInstalled,
-  notify,
-  notifyError,
-} from "./notify.ts";
+import { confirmUpload, notify, notifyError } from "./notify.ts";
 import { errorMessage, isRetryableNetworkError } from "./errors.ts";
 import { migrateLastUpload, readLastUpload, recordUpload } from "./history.ts";
 import {
@@ -25,11 +19,6 @@ import { uploadFile } from "./upload.ts";
 import { getScreenshotFolder, watchScreenshots } from "./watcher.ts";
 
 const runWatch = async (): Promise<void> => {
-  if (!isAlerterInstalled()) {
-    console.error(new AlerterMissingError().message);
-    process.exit(1);
-  }
-
   let config: Config;
   try {
     config = await loadConfig();

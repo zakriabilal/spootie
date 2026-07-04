@@ -1,6 +1,7 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { isCompiledBinary } from "./runtime.ts";
 import { ensurePrivateDir } from "./state.ts";
 
 const LABEL = "com.spootie.watch";
@@ -18,39 +19,59 @@ export const LOG_PATH = join(
   "spootie.log",
 );
 
+/**
+ * Arguments launchd should exec. When this process IS the compiled
+ * `dist/spootie` binary, process.execPath is that binary, so we point
+ * launchd straight at it (no bun, no source tree needed at runtime). In dev
+ * (`bun run src/index.ts install`), process.execPath is the `bun`
+ * interpreter, so we keep the old bun+entry-script form. isCompiledBinary()
+ * tells the two apart (see runtime.ts).
+ */
+const programArguments = (): string[] =>
+  isCompiledBinary()
+    ? [process.execPath, "watch"]
+    : [process.execPath, "run", join(import.meta.dir, "index.ts"), "watch"];
+
+/** Escapes a string for safe embedding in plist XML text content. */
+const escapeXml = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
 const plistContent = (): string => {
   // LaunchAgents run without the user's shell PATH, so everything must be
-  // absolute: the bun binary, the entry script, and a PATH that lets the
-  // daemon find `alerter` (and pbcopy/osascript in /usr/bin).
-  const bunPath = process.execPath;
-  const entryPath = join(import.meta.dir, "index.ts");
+  // absolute; pbcopy/osascript/mdls/defaults live in /usr/bin, so the PATH
+  // below still matters even though alerter itself is invoked by absolute
+  // path (extracted from the embedded asset, see notify.ts) and no longer
+  // needs to be found on it.
   const agentPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  const argsXml = programArguments()
+    .map((arg) => `    <string>${escapeXml(arg)}</string>`)
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LABEL}</string>
+  <string>${escapeXml(LABEL)}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${bunPath}</string>
-    <string>run</string>
-    <string>${entryPath}</string>
-    <string>watch</string>
+${argsXml}
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${LOG_PATH}</string>
+  <string>${escapeXml(LOG_PATH)}</string>
   <key>StandardErrorPath</key>
-  <string>${LOG_PATH}</string>
+  <string>${escapeXml(LOG_PATH)}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${agentPath}</string>
+    <string>${escapeXml(agentPath)}</string>
   </dict>
 </dict>
 </plist>

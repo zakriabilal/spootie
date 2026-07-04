@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "spootie": "bun run src/index.ts",
+    "build": "bun run scripts/build.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

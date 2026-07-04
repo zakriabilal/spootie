@@ -7,35 +7,43 @@
  * notification`, which is fire-and-forget.
  */
 
-import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { ALERTER_ASSET } from "./embedded-assets.ts";
+import { extractExecutable } from "./extract-asset.ts";
 
-const VENDORED_ALERTER = join(import.meta.dir, "..", "vendor", "alerter");
 const APP_TITLE = "spootie";
 
 /** How long the actionable notification stays interactive, in seconds. */
 const ACTION_TIMEOUT_SECONDS = 60;
 
-export class AlerterMissingError extends Error {
-  constructor() {
-    super(
-      `The bundled 'alerter' binary is missing at ${VENDORED_ALERTER}. ` +
-        "Restore vendor/alerter (it is committed to the repo).",
-    );
-    this.name = "AlerterMissingError";
-  }
-}
-
 /**
- * Path to the vendored alerter binary, or null if it is missing. Only the
- * vendored binary is accepted: askAction spawns it with double-dash flags
- * (--json, --title, --actions) that only this custom build understands, so a
- * different 'alerter' on PATH would silently mis-parse and drop every prompt.
+ * Where the embedded alerter binary is extracted to before it is spawned —
+ * $bunfs paths (what ALERTER_ASSET resolves to in a compiled binary) cannot
+ * be posix_spawn'd. Extraction runs the same way in dev (there it just
+ * copies vendor/alerter once), so there is a single code path everywhere.
  */
-const alerterPath = (): string | null =>
-  existsSync(VENDORED_ALERTER) ? VENDORED_ALERTER : null;
+const EXTRACTED_ALERTER = join(homedir(), ".config", "spootie", "bin", "alerter");
 
-export const isAlerterInstalled = (): boolean => alerterPath() !== null;
+// Extraction is lazy (only happens the first time a notification actually
+// needs to spawn alerter) and memoized, so commands that never notify (e.g.
+// `spootie status`, or the bare usage message) never touch the filesystem
+// for this.
+let extractedAlerterPath: Promise<string> | null = null;
+const resolveAlerterPath = (): Promise<string> => {
+  if (extractedAlerterPath === null) {
+    extractedAlerterPath = extractExecutable(ALERTER_ASSET, EXTRACTED_ALERTER).catch(
+      (err) => {
+        // Don't let a transient failure (e.g. ENOSPC, unwritable dir) wedge
+        // every future notification for the daemon's lifetime — clear the
+        // memo so the next call retries, while still failing this call.
+        extractedAlerterPath = null;
+        throw err;
+      },
+    );
+  }
+  return extractedAlerterPath;
+};
 
 interface AlerterResult {
   activationType?: string;
@@ -68,8 +76,7 @@ const askAction = async (
   message: string,
   action: string,
 ): Promise<boolean> => {
-  const alerter = alerterPath();
-  if (alerter === null) throw new AlerterMissingError();
+  const alerter = await resolveAlerterPath();
 
   const proc = Bun.spawn(
     [

@@ -3,16 +3,15 @@ import { readFileSync, unlinkSync } from "node:fs";
 import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { PREACT_STANDALONE_ASSET, VARIANT_A_HTML_ASSET } from "./embedded-assets.ts";
 import { errorMessage } from "./errors.ts";
-import { readHistory, removeFromHistory } from "./history.ts";
+import { readHistory, readLastUpload, removeFromHistory } from "./history.ts";
 import type { UploadQueue } from "./queue.ts";
-import { DATA_DIR, ensurePrivateDir } from "./state.ts";
+import { DATA_DIR, ensurePrivateDir, isPaused, setPaused } from "./state.ts";
 import { deleteObject } from "./upload.ts";
 
 /** Where the running daemon advertises its dashboard port to the CLI. */
 export const UI_INFO_PATH = join(DATA_DIR, "ui.json");
-
-const PUBLIC_DIR = join(import.meta.dir, "..", "public");
 
 /** Written to ui.json so `spootie status`/`spootie ui` can find the server. */
 export interface UiInfo {
@@ -48,12 +47,15 @@ export interface UiItem {
 
 /**
  * Only these exact paths are served as static files — there is no generic
- * filesystem serving, so no path-traversal surface.
+ * filesystem serving, so no path-traversal surface. `path` is the resolved
+ * embedded-asset path (see embedded-assets.ts): a real file under `bun run`,
+ * or a $bunfs path in the compiled binary — Bun.file() reads both the same
+ * way, so no dev/compiled branch is needed here.
  */
-const STATIC_ROUTES: Record<string, { file: string; type: string }> = {
-  "/": { file: "variant-a.html", type: "text/html; charset=utf-8" },
+const STATIC_ROUTES: Record<string, { path: string; type: string }> = {
+  "/": { path: VARIANT_A_HTML_ASSET, type: "text/html; charset=utf-8" },
   "/vendor/preact-standalone.mjs": {
-    file: "vendor/preact-standalone.mjs",
+    path: PREACT_STANDALONE_ASSET,
     type: "text/javascript; charset=utf-8",
   },
 };
@@ -140,10 +142,31 @@ const handleDelete = async (
   return json({ ok: true });
 };
 
+/**
+ * Toggle the pause flag from the dashboard (or the menu bar app). Body is
+ * validated strictly, like handleDelete, since it drives a state change.
+ */
+const handlePause = async (req: Request): Promise<Response> => {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const { paused } = (body ?? {}) as { paused?: unknown };
+  if (typeof paused !== "boolean") {
+    return json({ error: "Expected { paused: boolean }" }, 400);
+  }
+
+  await setPaused(paused);
+  return json({ ok: true, paused });
+};
+
 const serveStatic = async (pathname: string): Promise<Response> => {
   const route = STATIC_ROUTES[pathname];
   if (route === undefined) return new Response("Not found", { status: 404 });
-  const file = Bun.file(join(PUBLIC_DIR, route.file));
+  const file = Bun.file(route.path);
   if (!(await file.exists())) return new Response("Not found", { status: 404 });
   return new Response(file, { headers: { "content-type": route.type } });
 };
@@ -210,11 +233,28 @@ export const startUiServer = async ({
         if (!authed) return new Response("Forbidden", { status: 403 });
         return json({ items: await buildItems(queue) });
       }
+      if (pathname === "/api/status" && req.method === "GET") {
+        if (!authed) return new Response("Forbidden", { status: 403 });
+        const lastUpload = await readLastUpload();
+        return json({
+          paused: await isPaused(),
+          queueLength: queue.list().length,
+          lastUpload: lastUpload
+            ? { url: lastUpload.url, uploadedAt: lastUpload.uploadedAt }
+            : null,
+        });
+      }
       if (pathname === "/api/delete" && req.method === "POST") {
         if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
           return new Response("Forbidden", { status: 403 });
         }
         return handleDelete(req, queue, config);
+      }
+      if (pathname === "/api/pause" && req.method === "POST") {
+        if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+          return new Response("Forbidden", { status: 403 });
+        }
+        return handlePause(req);
       }
       if (req.method === "GET") {
         // Static pages carry no secrets; the dashboard reads its token from the
