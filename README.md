@@ -18,11 +18,11 @@ screenshot file is never modified.
 4. The resulting public URL is copied to your clipboard and a
    "Uploaded — URL copied" notification is shown.
 
-## Prerequisites
+## Requirements
 
-- [Bun](https://bun.sh) (developed on 1.3) — used only to build the binary;
-  the resulting `dist/spootie` runs standalone (`alerter` is vendored and
-  embedded, see [Building](#building)).
+- [Bun](https://bun.sh) (developed on 1.3) — the only thing you need to
+  install. It builds the binary; the result runs standalone (`alerter` is
+  vendored and embedded).
 - On first notification, macOS shows a permission prompt for `alerter`; allow
   it, then set **System Settings → Notifications → alerter** to **Alerts**
   style (the default "Banners" style auto-dismisses and hides the **Upload**
@@ -30,22 +30,40 @@ screenshot file is never modified.
 - A Cloudflare R2 bucket with **public access enabled** (an `r2.dev` public URL
   or a custom domain) and an S3 API access key pair.
 
-## Building
+## Getting started
 
-Clone, install, and compile — no Xcode project, no code signing:
+Clone, install, build, configure, and start the daemon — no Xcode project, no
+code signing:
 
 ```sh
+git clone <repo> && cd spootie
+bun install
+bun run build
+spootie setup
+spootie install
+```
+
+`bun run build` compiles a self-contained binary (`alerter` and the
+dashboard's HTML/JS are embedded — no other files travel with it) and installs
+it to `~/.local/bin/spootie`. If `~/.local/bin` isn't on your `PATH`, the build
+prints the one line to add to your shell profile; add it and open a new
+terminal so `spootie` resolves. See [Development](#development) to run straight
+from source instead.
+
+`spootie setup` runs the configuration wizard (below). `spootie install` writes
+and loads the LaunchAgent so the watcher runs at every login.
+
+### Updating
+
+```sh
+git pull
 bun install
 bun run build
 ```
 
-This produces `dist/spootie`, a self-contained daemon binary (`alerter` and
-the dashboard's HTML/JS are embedded in it — no other files need to travel
-with it).
-
-Everything below assumes you're running the built binary, `./dist/spootie`
-(or just `spootie` if it's on your PATH). See [Development](#development) for
-running from source instead.
+`bun run build` reinstalls the binary and, on macOS, automatically refreshes an
+already-installed LaunchAgent so the running daemon restarts on the new build —
+no `spootie install` needed after an update.
 
 ## Setup
 
@@ -58,7 +76,7 @@ Key ID, Secret Access Key, and Account ID.
 Then run the wizard:
 
 ```sh
-./dist/spootie setup
+spootie setup
 ```
 
 It prompts for each value (re-running shows current values as defaults),
@@ -87,43 +105,43 @@ lifecycle rule, and verifies the pipeline with a test upload.
 ## Running
 
 ```sh
-./dist/spootie <setup|watch|install|uninstall|pause|resume|last|status|ui>
+spootie <setup|watch|install|uninstall|pause|resume|last|status|ui>
 ```
 
-Start watching in the foreground: `./dist/spootie watch` (Ctrl+C to stop).
+Start watching in the foreground: `spootie watch` (Ctrl+C to stop).
 
 ### Run at login (LaunchAgent)
 
-`./dist/spootie install` writes and loads
-`~/Library/LaunchAgents/com.spootie.watch.plist`, pointed directly at the
-compiled binary (no Bun, no source tree needed at runtime): the watcher
-starts now, runs at every login, and restarts on crash. Logs go to
-`~/.config/spootie/logs/spootie.log`. Remove with `./dist/spootie
-uninstall`. **Re-run `install` after every rebuild**, not just after moving
-or renaming `dist/spootie` — `bun build --compile` atomically replaces the
-file on disk, but a LaunchAgent already running keeps executing the old,
-now-unlinked binary indefinitely until it's restarted, which is exactly what
-`install` does.
+`spootie install` writes and loads
+`~/Library/LaunchAgents/com.spootie.watch.plist`, pointed at the installed
+binary `~/.local/bin/spootie` (no Bun, no source tree needed at runtime): the
+watcher starts now, runs at every login, and restarts on crash. Logs go to
+`~/.config/spootie/logs/spootie.log`. Remove with `spootie uninstall`.
+
+You don't need to re-run `install` after a rebuild: `bun run build` reinstalls
+the binary in place and refreshes the LaunchAgent for you, and because the
+agent points at the stable `~/.local/bin/spootie` path rather than a throwaway
+inode, the restarted daemon runs the fresh build.
 
 ### Pause / resume
 
-`./dist/spootie pause` / `./dist/spootie resume` toggle a flag file
+`spootie pause` / `spootie resume` toggle a flag file
 (`~/.config/spootie/state/paused`) that the daemon checks immediately —
 applies to the LaunchAgent too, no restart needed. Queued uploads keep
 retrying while paused.
 
 ### Last upload / status
 
-- `./dist/spootie last` — prints the most recent uploaded URL to stdout
-  (exits 1 if nothing has been uploaded).
-- `./dist/spootie status` — LaunchAgent state, paused state, queue length,
-  last upload time, and the dashboard URL.
+- `spootie last` — prints the most recent uploaded URL to stdout (exits 1 if
+  nothing has been uploaded).
+- `spootie status` — LaunchAgent state, paused state, queue length, last
+  upload time, and the dashboard URL.
 
 ### Dashboard
 
 While `spootie watch` runs, it serves a local dashboard on `127.0.0.1` (never
 exposed off-machine) listing uploaded/queued screenshots with per-item Copy
-and Delete. Open with `./dist/spootie ui`, or get the URL from `status`.
+and Delete. Open with `spootie ui`, or get the URL from `status`.
 
 ### Screenshot folder detection
 
@@ -157,14 +175,14 @@ useful while iterating:
 bun run dev <setup|watch|install|uninstall|pause|resume|last|status|ui>
 ```
 
-`bun run dev watch` behaves identically to `./dist/spootie watch`; the
+`bun run dev watch` behaves identically to the installed `spootie watch`; the
 embedded-asset imports (`vendor/alerter`, the dashboard HTML/JS) resolve to
 their real on-disk paths under `bun run`, so there's no separate dev-mode
 code path to keep in sync. One difference: `bun run dev install` writes a
-LaunchAgent that execs `bun run <repo>/src/index.ts watch` instead of a
-standalone binary, since there's no `dist/spootie` to point at — re-run
-`install` from `./dist/spootie` once you've built, to switch the LaunchAgent
-over to the compiled binary.
+LaunchAgent that execs `bun run <repo>/src/index.ts watch` instead of the
+installed binary, since it isn't pointed at `~/.local/bin/spootie` — run
+`bun run build` once to install the compiled binary and switch the
+LaunchAgent over to it.
 
 Linting and formatting use [Oxc](https://oxc.rs):
 

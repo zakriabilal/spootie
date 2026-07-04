@@ -9,30 +9,34 @@ export const PLIST_PATH = join(homedir(), "Library", "LaunchAgents", `${LABEL}.p
 export const LOG_PATH = join(homedir(), ".config", "spootie", "logs", "spootie.log");
 
 /**
- * Arguments launchd should exec. When this process IS the compiled
- * `dist/spootie` binary, process.execPath is that binary, so we point
- * launchd straight at it (no bun, no source tree needed at runtime). In dev
- * (`bun run src/index.ts install`), process.execPath is the `bun`
- * interpreter, so we keep the old bun+entry-script form. isCompiledBinary()
- * tells the two apart (see runtime.ts).
+ * Arguments launchd should exec. When an explicit `binaryPath` is given (e.g.
+ * the build installs to a stable ~/.local/bin/spootie and refreshes the agent
+ * to point there), launchd is aimed straight at it. Otherwise, when this
+ * process IS the compiled binary, process.execPath is that binary, so we point
+ * launchd at it (no bun, no source tree needed at runtime); in dev
+ * (`bun run src/index.ts install`), process.execPath is the `bun` interpreter,
+ * so we keep the old bun+entry-script form. isCompiledBinary() tells the two
+ * apart (see runtime.ts).
  */
-const programArguments = (): string[] =>
-    isCompiledBinary()
+const programArguments = (binaryPath?: string): string[] => {
+    if (binaryPath !== undefined) return [binaryPath, "watch"];
+    return isCompiledBinary()
         ? [process.execPath, "watch"]
         : [process.execPath, "run", join(import.meta.dir, "index.ts"), "watch"];
+};
 
 /** Escapes a string for safe embedding in plist XML text content. */
 const escapeXml = (value: string): string =>
     value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const plistContent = (): string => {
+const plistContent = (binaryPath?: string): string => {
     // LaunchAgents run without the user's shell PATH, so everything must be
     // absolute; pbcopy/osascript/mdls/defaults live in /usr/bin, so the PATH
     // below still matters even though alerter itself is invoked by absolute
     // path (extracted from the embedded asset, see notify.ts) and no longer
     // needs to be found on it.
     const agentPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
-    const argsXml = programArguments()
+    const argsXml = programArguments(binaryPath)
         .map((arg) => `    <string>${escapeXml(arg)}</string>`)
         .join("\n");
 
@@ -80,14 +84,20 @@ export const isAgentLoaded = (): boolean => launchctl(["print", `${guiDomain()}/
 
 export const isAgentInstalled = (): Promise<boolean> => Bun.file(PLIST_PATH).exists();
 
-/** Write the plist and (re)load it. Safe to run when already installed. */
-export const installAgent = async (): Promise<void> => {
+/**
+ * Write the plist and (re)load it. Safe to run when already installed. When
+ * `binaryPath` is given, the plist's ProgramArguments point at that stable
+ * path instead of process.execPath — the build passes ~/.local/bin/spootie so
+ * a rebuild that replaces the binary in place doesn't strand the agent on a
+ * stale inode.
+ */
+export const installAgent = async (binaryPath?: string): Promise<void> => {
     await mkdir(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
     // launchd will not create the log directory itself; make sure it exists
     // (private — the log records upload URLs) before the plist points
     // StandardOut/ErrorPath at it.
     await ensurePrivateDir(dirname(LOG_PATH));
-    await Bun.write(PLIST_PATH, plistContent());
+    await Bun.write(PLIST_PATH, plistContent(binaryPath));
     console.log(`✓ LaunchAgent written to ${PLIST_PATH}`);
 
     // Reinstall cleanly: unload any existing instance first (ignore "not
