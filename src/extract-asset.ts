@@ -28,29 +28,29 @@ import { ensurePrivateDir } from "./state.ts";
  * cleaned up so failed extractions don't strand it.
  */
 export const extractExecutable = async (
-  embeddedPath: string,
-  destPath: string,
+    embeddedPath: string,
+    destPath: string,
 ): Promise<string> => {
-  const src = Bun.file(embeddedPath);
-  const dest = Bun.file(destPath);
+    const src = Bun.file(embeddedPath);
+    const dest = Bun.file(destPath);
 
-  const upToDate =
-    (await dest.exists()) &&
-    dest.size === src.size &&
-    Bun.hash(await dest.arrayBuffer()) === Bun.hash(await src.arrayBuffer());
+    const upToDate =
+        (await dest.exists()) &&
+        dest.size === src.size &&
+        Bun.hash(await dest.arrayBuffer()) === Bun.hash(await src.arrayBuffer());
 
-  if (!upToDate) {
-    await ensurePrivateDir(dirname(destPath));
-    const tmpPath = `${destPath}.${process.pid}.tmp`;
-    try {
-      await Bun.write(tmpPath, src);
-      await chmod(tmpPath, 0o755);
-      await rename(tmpPath, destPath);
-    } catch (err) {
-      await unlink(tmpPath).catch(() => {});
-      throw err;
+    if (!upToDate) {
+        await ensurePrivateDir(dirname(destPath));
+        const tmpPath = `${destPath}.${process.pid}.tmp`;
+        try {
+            await Bun.write(tmpPath, src);
+            await chmod(tmpPath, 0o755);
+            await rename(tmpPath, destPath);
+        } catch (err) {
+            await unlink(tmpPath).catch(() => {});
+            throw err;
+        }
     }
-  }
 
-  return destPath;
+    return destPath;
 };

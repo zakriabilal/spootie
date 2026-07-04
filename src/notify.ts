@@ -31,23 +31,21 @@ const EXTRACTED_ALERTER = join(homedir(), ".config", "spootie", "bin", "alerter"
 // for this.
 let extractedAlerterPath: Promise<string> | null = null;
 const resolveAlerterPath = (): Promise<string> => {
-  if (extractedAlerterPath === null) {
-    extractedAlerterPath = extractExecutable(ALERTER_ASSET, EXTRACTED_ALERTER).catch(
-      (err) => {
-        // Don't let a transient failure (e.g. ENOSPC, unwritable dir) wedge
-        // every future notification for the daemon's lifetime — clear the
-        // memo so the next call retries, while still failing this call.
-        extractedAlerterPath = null;
-        throw err;
-      },
-    );
-  }
-  return extractedAlerterPath;
+    if (extractedAlerterPath === null) {
+        extractedAlerterPath = extractExecutable(ALERTER_ASSET, EXTRACTED_ALERTER).catch((err) => {
+            // Don't let a transient failure (e.g. ENOSPC, unwritable dir) wedge
+            // every future notification for the daemon's lifetime — clear the
+            // memo so the next call retries, while still failing this call.
+            extractedAlerterPath = null;
+            throw err;
+        });
+    }
+    return extractedAlerterPath;
 };
 
 interface AlerterResult {
-  activationType?: string;
-  activationValue?: string;
+    activationType?: string;
+    activationValue?: string;
 }
 
 /**
@@ -56,7 +54,7 @@ interface AlerterResult {
  * if they dismiss, ignore, or it times out.
  */
 export const confirmUpload = (fileName: string): Promise<boolean> =>
-  askAction("New screenshot", fileName, "Upload");
+    askAction("New screenshot", fileName, "Upload");
 
 /**
  * After a queued upload completes, offer to copy its URL (we must not clobber
@@ -64,82 +62,74 @@ export const confirmUpload = (fileName: string): Promise<boolean> =>
  * the notification body.
  */
 export const offerCopyUrl = (url: string): Promise<boolean> =>
-  askAction("Queued upload finished", url, "Copy URL");
+    askAction("Queued upload finished", url, "Copy URL");
 
 /**
  * Show an actionable notification with a single affirmative button and wait.
  * Resolves true if the user clicks the button or the notification body; false
  * if they dismiss, ignore, or it times out.
  */
-const askAction = async (
-  subtitle: string,
-  message: string,
-  action: string,
-): Promise<boolean> => {
-  const alerter = await resolveAlerterPath();
+const askAction = async (subtitle: string, message: string, action: string): Promise<boolean> => {
+    const alerter = await resolveAlerterPath();
 
-  const proc = Bun.spawn(
-    [
-      alerter,
-      "--json",
-      "--title",
-      APP_TITLE,
-      "--subtitle",
-      subtitle,
-      "--message",
-      message,
-      "--actions",
-      action,
-      "--timeout",
-      String(ACTION_TIMEOUT_SECONDS),
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
+    const proc = Bun.spawn(
+        [
+            alerter,
+            "--json",
+            "--title",
+            APP_TITLE,
+            "--subtitle",
+            subtitle,
+            "--message",
+            message,
+            "--actions",
+            action,
+            "--timeout",
+            String(ACTION_TIMEOUT_SECONDS),
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+    );
 
-  const stdout = await new Response(proc.stdout).text();
-  await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
 
-  let result: AlerterResult;
-  try {
-    result = JSON.parse(stdout.trim()) as AlerterResult;
-  } catch {
-    // Unparseable output — treat as "no action taken".
-    return false;
-  }
+    let result: AlerterResult;
+    try {
+        result = JSON.parse(stdout.trim()) as AlerterResult;
+    } catch {
+        // Unparseable output — treat as "no action taken".
+        return false;
+    }
 
-  // The single action is the only affirmative choice, so a click on the
-  // notification body also counts — the action button is only visible on
-  // hover and only with the "Alerts" notification style.
-  if (result.activationType === "contentsClicked") return true;
-  return (
-    result.activationType === "actionClicked" &&
-    result.activationValue === action
-  );
+    // The single action is the only affirmative choice, so a click on the
+    // notification body also counts — the action button is only visible on
+    // hover and only with the "Alerts" notification style.
+    if (result.activationType === "contentsClicked") return true;
+    return result.activationType === "actionClicked" && result.activationValue === action;
 };
 
 /** Fire-and-forget informational notification. */
 export const notify = (message: string, subtitle?: string): void => {
-  displayNotification(message, subtitle);
+    displayNotification(message, subtitle);
 };
 
 /** Fire-and-forget error notification. */
 export const notifyError = (message: string): void => {
-  displayNotification(message, "Error");
+    displayNotification(message, "Error");
 };
 
 const displayNotification = (message: string, subtitle?: string): void => {
-  const script =
-    `display notification ${quote(message)} ` +
-    `with title ${quote(APP_TITLE)}` +
-    (subtitle ? ` subtitle ${quote(subtitle)}` : "");
+    const script =
+        `display notification ${quote(message)} ` +
+        `with title ${quote(APP_TITLE)}` +
+        (subtitle ? ` subtitle ${quote(subtitle)}` : "");
 
-  // Detached and non-blocking; we don't care about the result.
-  Bun.spawn(["osascript", "-e", script], {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
+    // Detached and non-blocking; we don't care about the result.
+    Bun.spawn(["osascript", "-e", script], {
+        stdout: "ignore",
+        stderr: "ignore",
+    });
 };
 
 /** Quote a string for safe embedding in an AppleScript literal. */
-const quote = (value: string): string =>
-  `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+const quote = (value: string): string => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;

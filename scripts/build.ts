@@ -18,45 +18,45 @@ const DIST_DIR = join(ROOT, "dist");
 
 /** Runs `cmd`, streaming its output, and exits the script on failure. */
 const run = (cmd: string[]): void => {
-  console.log(`$ ${cmd.join(" ")}`);
-  const result = Bun.spawnSync(cmd, { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
-  if (result.exitCode !== 0) {
-    console.error(`\nCommand failed (exit ${result.exitCode}): ${cmd.join(" ")}`);
-    process.exit(result.exitCode ?? 1);
-  }
+    console.log(`$ ${cmd.join(" ")}`);
+    const result = Bun.spawnSync(cmd, { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+    if (result.exitCode !== 0) {
+        console.error(`\nCommand failed (exit ${result.exitCode}): ${cmd.join(" ")}`);
+        process.exit(result.exitCode ?? 1);
+    }
 };
 
 const main = async (): Promise<void> => {
-  await mkdir(DIST_DIR, { recursive: true });
+    await mkdir(DIST_DIR, { recursive: true });
 
-  const spootieOut = join(DIST_DIR, "spootie");
-  run([
-    "bun",
-    "build",
-    "--compile",
-    "--minify",
-    join(ROOT, "src", "index.ts"),
-    "--outfile",
-    spootieOut,
-  ]);
-  console.log(`✓ Built ${spootieOut}`);
+    const spootieOut = join(DIST_DIR, "spootie");
+    run([
+        "bun",
+        "build",
+        "--compile",
+        "--minify",
+        join(ROOT, "src", "index.ts"),
+        "--outfile",
+        spootieOut,
+    ]);
+    console.log(`✓ Built ${spootieOut}`);
 
-  // bun build --compile atomically replaces dist/spootie, but a running
-  // LaunchAgent daemon keeps executing the old (now-unlinked) inode
-  // indefinitely — it never picks up the new binary on its own. Nudge
-  // whoever just rebuilt to reinstall, but never let this check itself fail
-  // the build (e.g. on Linux, where the LaunchAgent path doesn't apply).
-  try {
-    if (await Bun.file(PLIST_PATH).exists()) {
-      console.log(
-        `Note: a LaunchAgent is installed at ${PLIST_PATH}. It's still ` +
-          "running the old binary — re-run `./dist/spootie install` to restart " +
-          "the daemon on this build.",
-      );
+    // bun build --compile atomically replaces dist/spootie, but a running
+    // LaunchAgent daemon keeps executing the old (now-unlinked) inode
+    // indefinitely — it never picks up the new binary on its own. Nudge
+    // whoever just rebuilt to reinstall, but never let this check itself fail
+    // the build (e.g. on Linux, where the LaunchAgent path doesn't apply).
+    try {
+        if (await Bun.file(PLIST_PATH).exists()) {
+            console.log(
+                `Note: a LaunchAgent is installed at ${PLIST_PATH}. It's still ` +
+                    "running the old binary — re-run `./dist/spootie install` to restart " +
+                    "the daemon on this build.",
+            );
+        }
+    } catch {
+        // Best-effort reminder only; ignore failures.
     }
-  } catch {
-    // Best-effort reminder only; ignore failures.
-  }
 };
 
 main();

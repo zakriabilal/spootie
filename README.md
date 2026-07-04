@@ -71,12 +71,12 @@ lifecycle rule, and verifies the pipeline with a test upload.
 
 ```json
 {
-  "accountId": "your-cloudflare-account-id",
-  "accessKeyId": "your-r2-access-key-id",
-  "secretAccessKey": "your-r2-secret-access-key",
-  "bucket": "your-bucket-name",
-  "publicBaseUrl": "https://pub-xxxx.r2.dev",
-  "expiryDays": 7
+    "accountId": "your-cloudflare-account-id",
+    "accessKeyId": "your-r2-access-key-id",
+    "secretAccessKey": "your-r2-secret-access-key",
+    "bucket": "your-bucket-name",
+    "publicBaseUrl": "https://pub-xxxx.r2.dev",
+    "expiryDays": 7
 }
 ```
 
@@ -165,6 +165,18 @@ LaunchAgent that execs `bun run <repo>/src/index.ts watch` instead of a
 standalone binary, since there's no `dist/spootie` to point at — re-run
 `install` from `./dist/spootie` once you've built, to switch the LaunchAgent
 over to the compiled binary.
+
+Linting and formatting use [Oxc](https://oxc.rs):
+
+```sh
+bun run type-check    # tsc --noEmit
+bun run lint          # oxlint .
+bun run format        # oxfmt (rewrites files in place)
+bun run format:check  # oxfmt --check . (CI-friendly, no writes)
+```
+
+Formatting is configured for 4-space indentation in `.oxfmtrc.json`; lint rules
+live in `.oxlintrc.json`.
 
 ## Offline queue
 

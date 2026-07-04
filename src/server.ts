@@ -15,19 +15,19 @@ export const UI_INFO_PATH = join(DATA_DIR, "ui.json");
 
 /** Written to ui.json so `spootie status`/`spootie ui` can find the server. */
 export interface UiInfo {
-  port: number;
-  /** PID of the daemon that owns this server, for a liveness check. */
-  pid: number;
-  /**
-   * Random secret gating the API. ui.json is 0600, so only the owner can read
-   * it; the dashboard receives it via the URL `spootie ui` opens, keeps a copy
-   * in the tab's sessionStorage, and resends it as a `token` query param on
-   * every API request. We deliberately avoid a cookie: cookies can't be
-   * port-scoped, so a cookie would leak this token to every other server on
-   * 127.0.0.1. Another local user's process cannot read it and so cannot list
-   * share URLs or delete uploads over the loopback port.
-   */
-  token: string;
+    port: number;
+    /** PID of the daemon that owns this server, for a liveness check. */
+    pid: number;
+    /**
+     * Random secret gating the API. ui.json is 0600, so only the owner can read
+     * it; the dashboard receives it via the URL `spootie ui` opens, keeps a copy
+     * in the tab's sessionStorage, and resends it as a `token` query param on
+     * every API request. We deliberately avoid a cookie: cookies can't be
+     * port-scoped, so a cookie would leak this token to every other server on
+     * 127.0.0.1. Another local user's process cannot read it and so cannot list
+     * share URLs or delete uploads over the loopback port.
+     */
+    token: string;
 }
 
 /**
@@ -35,14 +35,14 @@ export interface UiInfo {
  * items come from the live UploadQueue. The UI codes against this shape.
  */
 export interface UiItem {
-  /** History key (uploaded) or queue entry id (queued) — stable per kind. */
-  id: string;
-  kind: "uploaded" | "queued";
-  fileName: string;
-  /** ISO 8601 timestamp: uploadedAt (uploaded) or queuedAt (queued). */
-  date: string;
-  /** Public share URL for uploaded items; null while queued. */
-  url: string | null;
+    /** History key (uploaded) or queue entry id (queued) — stable per kind. */
+    id: string;
+    kind: "uploaded" | "queued";
+    fileName: string;
+    /** ISO 8601 timestamp: uploadedAt (uploaded) or queuedAt (queued). */
+    date: string;
+    /** Public share URL for uploaded items; null while queued. */
+    url: string | null;
 }
 
 /**
@@ -53,18 +53,18 @@ export interface UiItem {
  * way, so no dev/compiled branch is needed here.
  */
 const STATIC_ROUTES: Record<string, { path: string; type: string }> = {
-  "/": { path: VARIANT_A_HTML_ASSET, type: "text/html; charset=utf-8" },
-  "/vendor/preact-standalone.mjs": {
-    path: PREACT_STANDALONE_ASSET,
-    type: "text/javascript; charset=utf-8",
-  },
+    "/": { path: VARIANT_A_HTML_ASSET, type: "text/html; charset=utf-8" },
+    "/vendor/preact-standalone.mjs": {
+        path: PREACT_STANDALONE_ASSET,
+        type: "text/javascript; charset=utf-8",
+    },
 };
 
 const json = (data: unknown, status = 200): Response =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
+    new Response(JSON.stringify(data), {
+        status,
+        headers: { "content-type": "application/json" },
+    });
 
 /**
  * Reject any request whose Host header is not our own loopback address. This is
@@ -73,7 +73,7 @@ const json = (data: unknown, status = 200): Response =>
  * still carries the attacker's Host, not `127.0.0.1:<port>`.
  */
 const isAllowedHost = (host: string | null, port: number): boolean =>
-  host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+    host === `127.0.0.1:${port}` || host === `localhost:${port}`;
 
 /**
  * Reject state-changing requests carrying a foreign Origin. A cross-site
@@ -81,65 +81,65 @@ const isAllowedHost = (host: string | null, port: number): boolean =>
  * Origin, so this closes the CSRF path that the Host check alone cannot.
  */
 const isAllowedOrigin = (origin: string | null, port: number): boolean =>
-  origin === null ||
-  origin === `http://127.0.0.1:${port}` ||
-  origin === `http://localhost:${port}`;
+    origin === null ||
+    origin === `http://127.0.0.1:${port}` ||
+    origin === `http://localhost:${port}`;
 
 /** Merge history + live queue into one newest-first list of dashboard items. */
 const buildItems = async (queue: UploadQueue): Promise<UiItem[]> => {
-  const uploaded: UiItem[] = (await readHistory()).map((e) => ({
-    id: e.key,
-    kind: "uploaded",
-    fileName: e.fileName,
-    date: e.uploadedAt,
-    url: e.url,
-  }));
+    const uploaded: UiItem[] = (await readHistory()).map((e) => ({
+        id: e.key,
+        kind: "uploaded",
+        fileName: e.fileName,
+        date: e.uploadedAt,
+        url: e.url,
+    }));
 
-  const queued: UiItem[] = queue.list().map((e) => ({
-    id: e.id,
-    kind: "queued",
-    fileName: e.filePath.split("/").pop() ?? e.filePath,
-    date: e.queuedAt,
-    url: null,
-  }));
+    const queued: UiItem[] = queue.list().map((e) => ({
+        id: e.id,
+        kind: "queued",
+        fileName: e.filePath.split("/").pop() ?? e.filePath,
+        date: e.queuedAt,
+        url: null,
+    }));
 
-  return [...uploaded, ...queued].sort((a, b) => b.date.localeCompare(a.date));
+    return [...uploaded, ...queued].toSorted((a, b) => b.date.localeCompare(a.date));
 };
 
 const handleDelete = async (
-  req: Request,
-  queue: UploadQueue,
-  config: Config,
+    req: Request,
+    queue: UploadQueue,
+    config: Config,
 ): Promise<Response> => {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
-  }
+    let body: unknown;
+    try {
+        body = await req.json();
+    } catch {
+        return json({ error: "Invalid JSON body" }, 400);
+    }
 
-  const { kind, id } = (body ?? {}) as { kind?: unknown; id?: unknown };
-  if (typeof id !== "string" || (kind !== "uploaded" && kind !== "queued")) {
-    return json({ error: "Expected { kind: 'uploaded'|'queued', id: string }" }, 400);
-  }
+    const { kind, id } = (body ?? {}) as { kind?: unknown; id?: unknown };
+    if (typeof id !== "string" || (kind !== "uploaded" && kind !== "queued")) {
+        return json({ error: "Expected { kind: 'uploaded'|'queued', id: string }" }, 400);
+    }
 
-  if (kind === "queued") {
-    const cancelled = await queue.cancel(id);
-    if (!cancelled) return json({ error: "No such queued item" }, 404);
+    if (kind === "queued") {
+        const cancelled = await queue.cancel(id);
+        if (!cancelled) return json({ error: "No such queued item" }, 404);
+        return json({ ok: true });
+    }
+
+    // Uploaded: only ever delete a key we actually recorded — never trust the
+    // request to name an arbitrary object in the bucket.
+    const entry = (await readHistory()).find((e) => e.key === id);
+    if (entry === undefined) return json({ error: "No such uploaded item" }, 404);
+    try {
+        await deleteObject(entry.key, config);
+    } catch (err) {
+        return json({ error: `Could not delete from R2: ${errorMessage(err)}` }, 502);
+    }
+    await removeFromHistory(entry.key);
     return json({ ok: true });
-  }
-
-  // Uploaded: only ever delete a key we actually recorded — never trust the
-  // request to name an arbitrary object in the bucket.
-  const entry = (await readHistory()).find((e) => e.key === id);
-  if (entry === undefined) return json({ error: "No such uploaded item" }, 404);
-  try {
-    await deleteObject(entry.key, config);
-  } catch (err) {
-    return json({ error: `Could not delete from R2: ${errorMessage(err)}` }, 502);
-  }
-  await removeFromHistory(entry.key);
-  return json({ ok: true });
 };
 
 /**
@@ -147,39 +147,39 @@ const handleDelete = async (
  * validated strictly, like handleDelete, since it drives a state change.
  */
 const handlePause = async (req: Request): Promise<Response> => {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
-  }
+    let body: unknown;
+    try {
+        body = await req.json();
+    } catch {
+        return json({ error: "Invalid JSON body" }, 400);
+    }
 
-  const { paused } = (body ?? {}) as { paused?: unknown };
-  if (typeof paused !== "boolean") {
-    return json({ error: "Expected { paused: boolean }" }, 400);
-  }
+    const { paused } = (body ?? {}) as { paused?: unknown };
+    if (typeof paused !== "boolean") {
+        return json({ error: "Expected { paused: boolean }" }, 400);
+    }
 
-  await setPaused(paused);
-  return json({ ok: true, paused });
+    await setPaused(paused);
+    return json({ ok: true, paused });
 };
 
 const serveStatic = async (pathname: string): Promise<Response> => {
-  const route = STATIC_ROUTES[pathname];
-  if (route === undefined) return new Response("Not found", { status: 404 });
-  const file = Bun.file(route.path);
-  if (!(await file.exists())) return new Response("Not found", { status: 404 });
-  return new Response(file, { headers: { "content-type": route.type } });
+    const route = STATIC_ROUTES[pathname];
+    if (route === undefined) return new Response("Not found", { status: 404 });
+    const file = Bun.file(route.path);
+    if (!(await file.exists())) return new Response("Not found", { status: 404 });
+    return new Response(file, { headers: { "content-type": route.type } });
 };
 
 /** Raised when another live daemon already owns ui.json. */
 export class AlreadyRunningError extends Error {
-  constructor(url: string) {
-    super(
-      `spootie is already running (dashboard at ${url}). Stop that instance ` +
-        "first — running two watchers would prompt for every screenshot twice.",
-    );
-    this.name = "AlreadyRunningError";
-  }
+    constructor(url: string) {
+        super(
+            `spootie is already running (dashboard at ${url}). Stop that instance ` +
+                "first — running two watchers would prompt for every screenshot twice.",
+        );
+        this.name = "AlreadyRunningError";
+    }
 }
 
 /**
@@ -191,108 +191,108 @@ export class AlreadyRunningError extends Error {
  * can never clobber the running one's advertised dashboard (or double-prompt).
  */
 export const startUiServer = async ({
-  queue,
-  config,
+    queue,
+    config,
 }: {
-  queue: UploadQueue;
-  config: Config;
+    queue: UploadQueue;
+    config: Config;
 }): Promise<{ port: number; token: string; stop: () => void }> => {
-  const existing = await readUiInfo();
-  if (existing !== null && existing.pid !== process.pid) {
-    throw new AlreadyRunningError(uiUrl(existing.port, existing.token));
-  }
-
-  // Secret the dashboard must present to reach the API. 192 bits of entropy,
-  // URL/cookie-safe.
-  const token = randomBytes(24).toString("base64url");
-
-  // Set once the server has bound; the fetch handler only runs afterwards.
-  let boundPort = 0;
-
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    async fetch(req) {
-      if (!isAllowedHost(req.headers.get("host"), boundPort)) {
-        return new Response("Forbidden", { status: 403 });
-      }
-
-      const url = new URL(req.url);
-      const { pathname } = url;
-
-      // The dashboard authenticates with the token, supplied as a `token` query
-      // param on every API request (from the URL `spootie ui` opens, which the
-      // dashboard stashes in sessionStorage). We do not set a cookie — cookies
-      // can't be port-scoped and would leak the token to other 127.0.0.1
-      // servers. Any other local user's process lacks it, so it cannot touch
-      // the API.
-      const queryToken = url.searchParams.get("token");
-      const authed = queryToken === token;
-
-      if (pathname === "/api/items" && req.method === "GET") {
-        if (!authed) return new Response("Forbidden", { status: 403 });
-        return json({ items: await buildItems(queue) });
-      }
-      if (pathname === "/api/status" && req.method === "GET") {
-        if (!authed) return new Response("Forbidden", { status: 403 });
-        const lastUpload = await readLastUpload();
-        return json({
-          paused: await isPaused(),
-          queueLength: queue.list().length,
-          lastUpload: lastUpload
-            ? { url: lastUpload.url, uploadedAt: lastUpload.uploadedAt }
-            : null,
-        });
-      }
-      if (pathname === "/api/delete" && req.method === "POST") {
-        if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
-          return new Response("Forbidden", { status: 403 });
-        }
-        return handleDelete(req, queue, config);
-      }
-      if (pathname === "/api/pause" && req.method === "POST") {
-        if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
-          return new Response("Forbidden", { status: 403 });
-        }
-        return handlePause(req);
-      }
-      if (req.method === "GET") {
-        // Static pages carry no secrets; the dashboard reads its token from the
-        // URL/sessionStorage and sends it on the API calls above.
-        return serveStatic(pathname);
-      }
-      return new Response("Not found", { status: 404 });
-    },
-  });
-
-  const { port } = server;
-  if (port === undefined) {
-    server.stop(true);
-    throw new Error("UI server did not bind to a port");
-  }
-  boundPort = port;
-
-  const info: UiInfo = { port, pid: process.pid, token };
-  // ui.json holds the API token; keep it readable only by the owner.
-  await ensurePrivateDir(DATA_DIR);
-  await writeFile(UI_INFO_PATH, `${JSON.stringify(info, null, 2)}\n`, { mode: 0o600 });
-  await chmod(UI_INFO_PATH, 0o600);
-
-  const stop = (): void => {
-    // Only remove ui.json if it still describes *this* instance — a second
-    // `spootie watch` may have overwritten it, and we must not orphan the
-    // still-running daemon's advertised dashboard. Synchronous so it completes
-    // before the process exits.
-    try {
-      const raw = JSON.parse(readFileSync(UI_INFO_PATH, "utf8")) as { pid?: unknown };
-      if (raw.pid === process.pid) unlinkSync(UI_INFO_PATH);
-    } catch {
-      // Best-effort.
+    const existing = await readUiInfo();
+    if (existing !== null && existing.pid !== process.pid) {
+        throw new AlreadyRunningError(uiUrl(existing.port, existing.token));
     }
-    server.stop(true);
-  };
 
-  return { port, token, stop };
+    // Secret the dashboard must present to reach the API. 192 bits of entropy,
+    // URL/cookie-safe.
+    const token = randomBytes(24).toString("base64url");
+
+    // Set once the server has bound; the fetch handler only runs afterwards.
+    let boundPort = 0;
+
+    const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        async fetch(req) {
+            if (!isAllowedHost(req.headers.get("host"), boundPort)) {
+                return new Response("Forbidden", { status: 403 });
+            }
+
+            const url = new URL(req.url);
+            const { pathname } = url;
+
+            // The dashboard authenticates with the token, supplied as a `token` query
+            // param on every API request (from the URL `spootie ui` opens, which the
+            // dashboard stashes in sessionStorage). We do not set a cookie — cookies
+            // can't be port-scoped and would leak the token to other 127.0.0.1
+            // servers. Any other local user's process lacks it, so it cannot touch
+            // the API.
+            const queryToken = url.searchParams.get("token");
+            const authed = queryToken === token;
+
+            if (pathname === "/api/items" && req.method === "GET") {
+                if (!authed) return new Response("Forbidden", { status: 403 });
+                return json({ items: await buildItems(queue) });
+            }
+            if (pathname === "/api/status" && req.method === "GET") {
+                if (!authed) return new Response("Forbidden", { status: 403 });
+                const lastUpload = await readLastUpload();
+                return json({
+                    paused: await isPaused(),
+                    queueLength: queue.list().length,
+                    lastUpload: lastUpload
+                        ? { url: lastUpload.url, uploadedAt: lastUpload.uploadedAt }
+                        : null,
+                });
+            }
+            if (pathname === "/api/delete" && req.method === "POST") {
+                if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+                    return new Response("Forbidden", { status: 403 });
+                }
+                return handleDelete(req, queue, config);
+            }
+            if (pathname === "/api/pause" && req.method === "POST") {
+                if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+                    return new Response("Forbidden", { status: 403 });
+                }
+                return handlePause(req);
+            }
+            if (req.method === "GET") {
+                // Static pages carry no secrets; the dashboard reads its token from the
+                // URL/sessionStorage and sends it on the API calls above.
+                return serveStatic(pathname);
+            }
+            return new Response("Not found", { status: 404 });
+        },
+    });
+
+    const { port } = server;
+    if (port === undefined) {
+        server.stop(true);
+        throw new Error("UI server did not bind to a port");
+    }
+    boundPort = port;
+
+    const info: UiInfo = { port, pid: process.pid, token };
+    // ui.json holds the API token; keep it readable only by the owner.
+    await ensurePrivateDir(DATA_DIR);
+    await writeFile(UI_INFO_PATH, `${JSON.stringify(info, null, 2)}\n`, { mode: 0o600 });
+    await chmod(UI_INFO_PATH, 0o600);
+
+    const stop = (): void => {
+        // Only remove ui.json if it still describes *this* instance — a second
+        // `spootie watch` may have overwritten it, and we must not orphan the
+        // still-running daemon's advertised dashboard. Synchronous so it completes
+        // before the process exits.
+        try {
+            const raw = JSON.parse(readFileSync(UI_INFO_PATH, "utf8")) as { pid?: unknown };
+            if (raw.pid === process.pid) unlinkSync(UI_INFO_PATH);
+        } catch {
+            // Best-effort.
+        }
+        server.stop(true);
+    };
+
+    return { port, token, stop };
 };
 
 /**
@@ -305,14 +305,14 @@ export const startUiServer = async ({
  * loopback address, so the auto Host header satisfies isAllowedHost.
  */
 const isDaemonListening = async (port: number, token: string): Promise<boolean> => {
-  try {
-    const res = await fetch(
-      `http://127.0.0.1:${port}/api/items?token=${encodeURIComponent(token)}`,
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
+    try {
+        const res = await fetch(
+            `http://127.0.0.1:${port}/api/items?token=${encodeURIComponent(token)}`,
+        );
+        return res.ok;
+    } catch {
+        return false;
+    }
 };
 
 /**
@@ -321,22 +321,22 @@ const isDaemonListening = async (port: number, token: string): Promise<boolean> 
  * (a stale record left by a crash), so callers never advertise a dead server.
  */
 export const readUiInfo = async (): Promise<UiInfo | null> => {
-  try {
-    const raw: unknown = await Bun.file(UI_INFO_PATH).json();
-    if (
-      typeof raw === "object" &&
-      raw !== null &&
-      typeof (raw as { port?: unknown }).port === "number" &&
-      typeof (raw as { pid?: unknown }).pid === "number" &&
-      typeof (raw as { token?: unknown }).token === "string"
-    ) {
-      const info = raw as UiInfo;
-      if (await isDaemonListening(info.port, info.token)) return info;
+    try {
+        const raw: unknown = await Bun.file(UI_INFO_PATH).json();
+        if (
+            typeof raw === "object" &&
+            raw !== null &&
+            typeof (raw as { port?: unknown }).port === "number" &&
+            typeof (raw as { pid?: unknown }).pid === "number" &&
+            typeof (raw as { token?: unknown }).token === "string"
+        ) {
+            const info = raw as UiInfo;
+            if (await isDaemonListening(info.port, info.token)) return info;
+        }
+        return null;
+    } catch {
+        return null;
     }
-    return null;
-  } catch {
-    return null;
-  }
 };
 
 /**
@@ -345,4 +345,4 @@ export const readUiInfo = async (): Promise<UiInfo | null> => {
  * `token` query param on every API call.
  */
 export const uiUrl = (port: number, token?: string): string =>
-  `http://127.0.0.1:${port}/${token ? `?token=${token}` : ""}`;
+    `http://127.0.0.1:${port}/${token ? `?token=${token}` : ""}`;

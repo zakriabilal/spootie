@@ -1,0 +1,6 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "tabWidth": 4,
+    "useTabs": false,
+    "ignorePatterns": ["public/vendor/preact-standalone.mjs", "public/**/*.html", "dist/**"]
+}

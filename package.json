@@ -1,23 +1,28 @@
 {
-  "name": "spootie",
-  "version": "0.1.0",
-  "description": "Mac-only screenshot-to-Cloudflare-R2 uploader with confirm-per-screenshot notifications",
-  "type": "module",
-  "private": true,
-  "bin": {
-    "spootie": "src/index.ts"
-  },
-  "scripts": {
-    "dev": "bun run src/index.ts",
-    "spootie": "bun run src/index.ts",
-    "build": "bun run scripts/build.ts",
-    "type-check": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.658.0"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.1.0",
-    "typescript": "^5.6.0"
-  }
+    "name": "spootie",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Mac-only screenshot-to-Cloudflare-R2 uploader with confirm-per-screenshot notifications",
+    "bin": {
+        "spootie": "src/index.ts"
+    },
+    "type": "module",
+    "scripts": {
+        "dev": "bun run src/index.ts",
+        "spootie": "bun run src/index.ts",
+        "build": "bun run scripts/build.ts",
+        "type-check": "tsc --noEmit",
+        "lint": "oxlint .",
+        "format": "oxfmt",
+        "format:check": "oxfmt --check ."
+    },
+    "dependencies": {
+        "@aws-sdk/client-s3": "^3.658.0"
+    },
+    "devDependencies": {
+        "@types/bun": "^1.1.0",
+        "oxfmt": "^0.57.0",
+        "oxlint": "^1.72.0",
+        "typescript": "^5.6.0"
+    }
 }

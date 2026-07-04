@@ -18,16 +18,16 @@
  * `declare module` below invisible to the checker.
  */
 declare module "*/vendor/alerter" {
-  const path: string;
-  export default path;
+    const path: string;
+    export default path;
 }
 
 declare module "*/public/variant-a.html" {
-  const path: string;
-  export default path;
+    const path: string;
+    export default path;
 }
 
 declare module "*/preact-standalone.mjs" {
-  const path: string;
-  export default path;
+    const path: string;
+    export default path;
 }
