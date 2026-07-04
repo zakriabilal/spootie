@@ -143,7 +143,7 @@ const handleDelete = async (
 };
 
 /**
- * Toggle the pause flag from the dashboard (or the menu bar app). Body is
+ * Toggle the pause flag from the dashboard. Body is
  * validated strictly, like handleDelete, since it drives a state change.
  */
 const handlePause = async (req: Request): Promise<Response> => {

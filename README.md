@@ -41,9 +41,7 @@ bun run build
 
 This produces `dist/spootie`, a self-contained daemon binary (`alerter` and
 the dashboard's HTML/JS are embedded in it — no other files need to travel
-with it). On macOS it also compiles `dist/spootie-menubar`, the optional
-[menu bar app](#menu-bar-app); on Linux that step is skipped with a message
-(Swift isn't available there).
+with it).
 
 Everything below assumes you're running the built binary, `./dist/spootie`
 (or just `spootie` if it's on your PATH). See [Development](#development) for
@@ -126,29 +124,6 @@ retrying while paused.
 While `spootie watch` runs, it serves a local dashboard on `127.0.0.1` (never
 exposed off-machine) listing uploaded/queued screenshots with per-item Copy
 and Delete. Open with `./dist/spootie ui`, or get the URL from `status`.
-
-### Menu bar app
-
-`menubar/main.swift` is an optional, unsigned macOS menu bar client — a thin
-wrapper around the same local dashboard API the web UI uses (`/api/status`,
-`/api/items`, `/api/pause`). It shows a status icon (watching / paused /
-daemon unreachable), lets you pause/resume and copy recent upload URLs
-without opening a browser tab, and links to the full dashboard.
-
-It requires the daemon to already be running (`spootie watch`, or the
-LaunchAgent from `spootie install`) — it never starts, stops, or manages the
-daemon itself, and quitting it does not stop `spootie watch`.
-
-`bun run build` compiles it to `dist/spootie-menubar` on a Mac (see
-[Building](#building)) — no separate command needed:
-
-```sh
-./dist/spootie-menubar
-```
-
-It's unsigned and built locally (an internal tool, not distributed), so
-macOS Gatekeeper may warn on first launch from Finder; running it from
-Terminal as above avoids that. See `menubar/README.md` for more detail.
 
 ### Screenshot folder detection
 
