@@ -7,6 +7,7 @@ import { copyToClipboard } from "./clipboard.ts";
 import { recordUpload } from "./history.ts";
 import { notify, notifyError, offerCopyUrl } from "./notify.ts";
 import { DATA_DIR, ensurePrivateDir } from "./state.ts";
+import { generateThumbnail } from "./thumbs.ts";
 import { deleteObject, uploadFile } from "./upload.ts";
 
 export const QUEUE_PATH = join(DATA_DIR, "queue.json");
@@ -112,6 +113,8 @@ export class UploadQueue {
                         fileName: name,
                         uploadedAt: new Date().toISOString(),
                     });
+                    // Local-only preview; fire-and-forget so it never delays the drain.
+                    generateThumbnail(key, entry.filePath);
                     // Don't block the drain on the user's response; and never write
                     // the clipboard unprompted for late completions.
                     void this.offerCopy(url);

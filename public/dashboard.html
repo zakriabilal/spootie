@@ -136,6 +136,25 @@
     }
     .row.queued .status-dot { background: var(--queued); animation: pulse 1.4s ease-in-out infinite; }
 
+    /* ---- thumbnail (local sips preview) / placeholder ---- */
+    .thumb, .thumb-ph {
+        width: 48px;
+        height: 48px;
+        flex: none;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg-elev);
+    }
+    .thumb { object-fit: cover; display: block; }
+    .thumb-ph {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-size: 16px;
+        color: var(--faint);
+    }
+
     .meta {
         min-width: 0;
         flex: 1 1 auto;
@@ -377,9 +396,17 @@
         };
 
         const queued = item.kind === "queued";
+        // Thumbnails are local-only; <img> can't send headers, so the token
+        // rides the query string like every other API call.
+        const thumbSrc = item.thumb
+            ? withToken("/api/thumb?key=" + encodeURIComponent(item.id))
+            : null;
         return html`
             <div class=${"row" + (queued ? " queued" : "")}>
                 <span class="status-dot"></span>
+                ${thumbSrc
+                    ? html`<img class="thumb" loading="lazy" alt="" src=${thumbSrc} />`
+                    : html`<span class="thumb-ph" aria-hidden="true">▤</span>`}
                 <div class="meta">
                     <span class="name" title=${item.fileName}>${item.fileName}</span>
                     <span class="sep">·</span>

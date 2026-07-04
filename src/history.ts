@@ -21,6 +21,12 @@ export interface HistoryEntry {
     fileName: string;
     /** ISO 8601 timestamp of the upload. */
     uploadedAt: string;
+    /**
+     * True once a local thumbnail has been generated for this upload (see
+     * thumbs.ts). Optional: entries recorded before thumbnails existed simply
+     * lack it and are treated as having no thumbnail.
+     */
+    thumb?: boolean;
 }
 
 /**
@@ -53,6 +59,30 @@ export const recordUpload = async (entry: HistoryEntry): Promise<void> => {
         });
     } catch (err) {
         console.error(`spootie: could not record upload history: ${errorMessage(err)}`);
+    }
+};
+
+/**
+ * Mark an existing history entry as having a local thumbnail. Called (best-
+ * effort, never throws) once sips has produced the thumb; a no-op if the entry
+ * is already flagged or was deleted while the thumbnail was being generated.
+ */
+export const markThumbGenerated = async (key: string): Promise<void> => {
+    try {
+        await withHistoryLock(async () => {
+            const entries = await readHistory();
+            let changed = false;
+            const updated = entries.map((e) => {
+                if (e.key === key && e.thumb !== true) {
+                    changed = true;
+                    return { ...e, thumb: true };
+                }
+                return e;
+            });
+            if (changed) await writeHistory(updated);
+        });
+    } catch (err) {
+        console.error(`spootie: could not record thumbnail state: ${errorMessage(err)}`);
     }
 };
 

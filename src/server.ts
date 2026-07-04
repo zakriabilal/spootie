@@ -8,6 +8,7 @@ import { errorMessage } from "./errors.ts";
 import { readHistory, readLastUpload, removeFromHistory } from "./history.ts";
 import type { UploadQueue } from "./queue.ts";
 import { DATA_DIR, ensurePrivateDir, isPaused, setPaused } from "./state.ts";
+import { deleteThumbnail, thumbPathForKey } from "./thumbs.ts";
 import { deleteObject } from "./upload.ts";
 
 /** Where the running daemon advertises its dashboard port to the CLI. */
@@ -43,6 +44,11 @@ export interface UiItem {
     date: string;
     /** Public share URL for uploaded items; null while queued. */
     url: string | null;
+    /**
+     * True if a local thumbnail exists for this item (served by /api/thumb).
+     * Always false for queued items — they have not been uploaded yet.
+     */
+    thumb: boolean;
 }
 
 /**
@@ -93,6 +99,7 @@ const buildItems = async (queue: UploadQueue): Promise<UiItem[]> => {
         fileName: e.fileName,
         date: e.uploadedAt,
         url: e.url,
+        thumb: e.thumb === true,
     }));
 
     const queued: UiItem[] = queue.list().map((e) => ({
@@ -101,6 +108,7 @@ const buildItems = async (queue: UploadQueue): Promise<UiItem[]> => {
         fileName: e.filePath.split("/").pop() ?? e.filePath,
         date: e.queuedAt,
         url: null,
+        thumb: false,
     }));
 
     return [...uploaded, ...queued].toSorted((a, b) => b.date.localeCompare(a.date));
@@ -139,6 +147,8 @@ const handleDelete = async (
         return json({ error: `Could not delete from R2: ${errorMessage(err)}` }, 502);
     }
     await removeFromHistory(entry.key);
+    // Best-effort: drop the local thumbnail too so it doesn't linger orphaned.
+    await deleteThumbnail(entry.key);
     return json({ ok: true });
 };
 
@@ -161,6 +171,30 @@ const handlePause = async (req: Request): Promise<Response> => {
 
     await setPaused(paused);
     return json({ ok: true, paused });
+};
+
+/**
+ * Serve a local thumbnail by object key. The key arrives as a query param (an
+ * <img src> can't send an auth header, so the token rides the query string like
+ * everything else). thumbPathForKey rejects any key with a separator, a `..`, or
+ * a character outside the base64url+extension set and confirms the resolved path
+ * sits inside the thumbs dir, so a hostile key (`../../etc/passwd`, `a/b.jpg`,
+ * `%2e%2e%2f` once URL-decoded) yields a 404 rather than a traversal. Thumbnails
+ * are immutable per key (the key is a random id), so they cache hard — the 2s
+ * dashboard poll won't re-fetch them.
+ */
+const serveThumb = async (key: string | null): Promise<Response> => {
+    if (key === null) return new Response("Not found", { status: 404 });
+    const path = thumbPathForKey(key);
+    if (path === null) return new Response("Not found", { status: 404 });
+    const file = Bun.file(path);
+    if (!(await file.exists())) return new Response("Not found", { status: 404 });
+    return new Response(file, {
+        headers: {
+            "content-type": "image/jpeg",
+            "cache-control": "private, max-age=31536000, immutable",
+        },
+    });
 };
 
 const serveStatic = async (pathname: string): Promise<Response> => {
@@ -232,6 +266,10 @@ export const startUiServer = async ({
             if (pathname === "/api/items" && req.method === "GET") {
                 if (!authed) return new Response("Forbidden", { status: 403 });
                 return json({ items: await buildItems(queue) });
+            }
+            if (pathname === "/api/thumb" && req.method === "GET") {
+                if (!authed) return new Response("Forbidden", { status: 403 });
+                return serveThumb(url.searchParams.get("key"));
             }
             if (pathname === "/api/status" && req.method === "GET") {
                 if (!authed) return new Response("Forbidden", { status: 403 });

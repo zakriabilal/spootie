@@ -10,6 +10,7 @@ import { readQueueLength, UploadQueue } from "./queue.ts";
 import { readUiInfo, startUiServer, uiUrl } from "./server.ts";
 import { runSetup } from "./setup.ts";
 import { isPaused, migrateLegacyState, setPaused } from "./state.ts";
+import { generateThumbnail } from "./thumbs.ts";
 import { uploadFile } from "./upload.ts";
 import { getScreenshotFolder, watchScreenshots } from "./watcher.ts";
 
@@ -81,6 +82,8 @@ const handleScreenshot = async (
             fileName: name,
             uploadedAt: new Date().toISOString(),
         });
+        // Local-only preview; fire-and-forget so it never delays the response.
+        generateThumbnail(key, path);
         notify(url, "Uploaded — URL copied");
         console.log(`Uploaded ${name} -> ${url}`);
     } catch (err) {
