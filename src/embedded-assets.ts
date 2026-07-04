@@ -24,9 +24,9 @@
 // Accepted: the file is committed to the repo, so a checkout missing it is
 // already broken.
 import alerterAsset from "../vendor/alerter" with { type: "file" };
-import variantAHtmlAsset from "../public/variant-a.html" with { type: "file" };
+import dashboardHtmlAsset from "../public/dashboard.html" with { type: "file" };
 import preactStandaloneAsset from "../public/vendor/preact-standalone.mjs" with { type: "file" };
 
 export const ALERTER_ASSET: string = alerterAsset;
-export const VARIANT_A_HTML_ASSET: string = variantAHtmlAsset;
+export const DASHBOARD_HTML_ASSET: string = dashboardHtmlAsset;
 export const PREACT_STANDALONE_ASSET: string = preactStandaloneAsset;

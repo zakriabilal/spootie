@@ -22,7 +22,7 @@ declare module "*/vendor/alerter" {
     export default path;
 }
 
-declare module "*/public/variant-a.html" {
+declare module "*/public/dashboard.html" {
     const path: string;
     export default path;
 }

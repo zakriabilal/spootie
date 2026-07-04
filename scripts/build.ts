@@ -4,7 +4,7 @@
  * `bun install` to get a runnable daemon on their PATH:
  *
  *  - dist/spootie: a self-contained daemon binary (`bun build --compile`).
- *    vendor/alerter, public/variant-a.html and
+ *    vendor/alerter, public/dashboard.html and
  *    public/vendor/preact-standalone.mjs are embedded into it via
  *    `with { type: "file" }` imports (see src/embedded-assets.ts) — no
  *    separate asset files need to ship alongside the binary.

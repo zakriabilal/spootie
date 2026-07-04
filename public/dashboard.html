@@ -1,0 +1,494 @@
+<title>Spootie</title>
+<style>
+    :root {
+        color-scheme: dark;
+        --bg: #0a0a0c;
+        --bg-elev: #0e0e11;
+        --fg: #e7e7ea;
+        --muted: #71717a;
+        --faint: #52525b;
+        --border: rgba(255, 255, 255, 0.07);
+        --border-strong: rgba(255, 255, 255, 0.12);
+        --hover: rgba(255, 255, 255, 0.028);
+        --accent: #7dd992;
+        --queued: #d9a95e;
+        --danger: #e07070;
+        --bar-h: 53px;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Code", monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+    }
+
+    body {
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+    }
+
+    ::selection { background: rgba(125, 217, 146, 0.22); }
+
+    #app { max-width: 680px; margin: 0 auto; }
+
+    /* ---- top bar ---- */
+    .bar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        height: var(--bar-h);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        background: color-mix(in srgb, var(--bg) 82%, transparent);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+    }
+    .wordmark {
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 15px;
+        letter-spacing: -0.01em;
+        color: var(--fg);
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+    }
+    .wordmark .prompt {
+        font-family: var(--mono);
+        color: var(--faint);
+        font-weight: 400;
+        font-size: 13px;
+    }
+    .conn {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        letter-spacing: 0.02em;
+        color: var(--muted);
+        text-transform: lowercase;
+    }
+    .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--faint);
+    }
+    .dot.live { background: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
+    .dot.off  { background: var(--queued); animation: pulse 1.2s ease-in-out infinite; }
+
+    /* ---- offline banner ---- */
+    .banner {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--queued);
+        padding: 9px 20px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(217, 169, 94, 0.05);
+    }
+
+    /* ---- date group headers ---- */
+    .group-head {
+        position: sticky;
+        top: var(--bar-h);
+        z-index: 10;
+        padding: 16px 20px 7px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--faint);
+        background: color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
+    /* ---- rows ---- */
+    .row {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border);
+        animation: rowIn 0.24s ease both;
+    }
+    .row:hover { background: var(--hover); }
+
+    .row .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--accent);
+    }
+    .row.queued .status-dot { background: var(--queued); animation: pulse 1.4s ease-in-out infinite; }
+
+    .meta {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-family: var(--mono);
+    }
+    .name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        color: var(--fg);
+    }
+    .sep { color: var(--border-strong); flex: none; }
+    .time { flex: none; font-size: 12px; color: var(--muted); }
+    .qlabel {
+        flex: none;
+        font-size: 11px;
+        color: var(--queued);
+        letter-spacing: 0.02em;
+    }
+    .qlabel .dots::after {
+        content: "";
+        animation: ellipsis 1.6s steps(4, end) infinite;
+    }
+
+    /* ---- actions ---- */
+    .actions {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        opacity: 0.55;
+        transition: opacity 0.12s ease;
+    }
+    .row:hover .actions,
+    .row:focus-within .actions { opacity: 1; }
+
+    .btn {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        padding: 4px 8px;
+        cursor: pointer;
+        transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+        white-space: nowrap;
+    }
+    .btn:hover { color: var(--fg); background: rgba(255, 255, 255, 0.04); }
+    .btn:focus-visible {
+        outline: none;
+        border-color: var(--border-strong);
+        color: var(--fg);
+    }
+    .btn.copied { color: var(--accent); }
+    .btn.danger { color: var(--danger); }
+    .btn.armed { color: var(--danger); border-color: rgba(224, 112, 112, 0.4); background: rgba(224, 112, 112, 0.08); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    .row-err {
+        padding: 0 20px 9px 38px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--danger);
+    }
+
+    /* ---- empty / loading ---- */
+    .placeholder {
+        text-align: center;
+        padding: 90px 20px;
+        color: var(--muted);
+    }
+    .placeholder .glyph {
+        font-family: var(--mono);
+        font-size: 22px;
+        color: var(--faint);
+        margin-bottom: 12px;
+    }
+    .placeholder h2 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--fg);
+    }
+    .placeholder p { margin: 0; font-size: 13px; color: var(--muted); }
+
+    .foot {
+        padding: 22px 20px 40px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--faint);
+        text-align: center;
+    }
+
+    /* ---- persistent brand/status line ---- */
+    .brandbar {
+        padding: 14px 20px 34px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.02em;
+        color: var(--faint);
+        text-align: center;
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.32; } }
+    @keyframes rowIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+    @keyframes ellipsis { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+    @media (prefers-reduced-motion: reduce) {
+        .row { animation: none; }
+        .dot, .status-dot, .qlabel .dots::after { animation: none !important; }
+    }
+
+    @media (max-width: 520px) {
+        .group-head { padding-left: 16px; padding-right: 16px; }
+        .row { padding-left: 16px; padding-right: 16px; }
+        .bar { padding: 0 16px; }
+        .actions { opacity: 1; }
+    }
+</style>
+
+<div id="app"></div>
+
+<script type="module">
+    import {
+        html, render, useState, useEffect, useRef,
+    } from "/vendor/preact-standalone.mjs";
+
+    // The API token comes from the URL `spootie ui` opens; keep it in this tab's
+    // sessionStorage and resend it as a `token` query param on every API call.
+    // (No cookie: cookies can't be port-scoped and would leak it to other
+    // 127.0.0.1 servers.)
+    const TOKEN = (() => {
+        const fromUrl = new URL(location.href).searchParams.get("token");
+        try {
+            if (fromUrl) { sessionStorage.setItem("spootie_token", fromUrl); return fromUrl; }
+            return sessionStorage.getItem("spootie_token") || "";
+        } catch (_) {
+            return fromUrl || "";
+        }
+    })();
+
+    // Port the dashboard is served on, read from the URL for the status line.
+    const PORT = location.port || "?";
+
+    const withToken = (path) =>
+        path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN);
+
+    /**
+     * Copy text via the Clipboard API. The dashboard is only served over
+     * loopback (a secure context), so writeText is always available; return
+     * false only if it rejects.
+     */
+    const copyText = async (text) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    /** "Today" / "Yesterday" / "28 June 2026" for a date-group header. */
+    const groupLabel = (iso) => {
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return "Unknown date";
+        const diff = Math.round((startOfDay(new Date()) - startOfDay(dt)) / 86400000);
+        if (diff === 0) return "Today";
+        if (diff === 1) return "Yesterday";
+        return dt.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+    };
+
+    /** 24-hour HH:MM:SS, matching the tool's terminal-metadata feel. */
+    const fmtTime = (iso) => {
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return "--:--:--";
+        return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    };
+
+    const deleteItem = async (kind, id) => {
+        const res = await fetch(withToken("/api/delete"), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ kind, id }),
+        });
+        if (!res.ok) {
+            let msg = "Delete failed";
+            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
+            throw new Error(msg);
+        }
+    };
+
+    function Row({ item, onRemove }) {
+        const [copied, setCopied] = useState(false);
+        const [armed, setArmed] = useState(false);
+        const [busy, setBusy] = useState(false);
+        const [err, setErr] = useState("");
+        const timers = useRef([]);
+
+        useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+        const track = (fn, ms) => { timers.current.push(setTimeout(fn, ms)); };
+
+        const onCopy = async () => {
+            const ok = await copyText(item.url || "");
+            if (ok) {
+                setErr("");
+                setCopied(true);
+                track(() => setCopied(false), 1400);
+            } else {
+                setErr("Couldn't copy to clipboard");
+            }
+        };
+
+        const onDelete = async () => {
+            if (!armed) {
+                setErr("");
+                setArmed(true);
+                track(() => setArmed(false), 3000);
+                return;
+            }
+            setBusy(true);
+            try {
+                await deleteItem(item.kind, item.id);
+                onRemove(item.kind, item.id);
+            } catch (e) {
+                setBusy(false);
+                setArmed(false);
+                setErr(e.message || "Delete failed");
+            }
+        };
+
+        const queued = item.kind === "queued";
+        return html`
+            <div class=${"row" + (queued ? " queued" : "")}>
+                <span class="status-dot"></span>
+                <div class="meta">
+                    <span class="name" title=${item.fileName}>${item.fileName}</span>
+                    <span class="sep">·</span>
+                    ${queued
+                        ? html`<span class="qlabel">queued, retry pending<span class="dots"></span></span>`
+                        : html`<span class="time">${fmtTime(item.date)}</span>`}
+                </div>
+                <div class="actions">
+                    ${!queued && html`
+                        <button class=${"btn" + (copied ? " copied" : "")} onClick=${onCopy}>
+                            ${copied ? "Copied" : "Copy"}
+                        </button>`}
+                    <button
+                        class=${"btn danger" + (armed ? " armed" : "")}
+                        onClick=${onDelete}
+                        disabled=${busy}
+                        title=${queued ? "Cancel this queued upload" : "Delete from R2"}>
+                        ${busy ? "…" : armed ? "Sure?" : queued ? "Cancel" : "Delete"}
+                    </button>
+                </div>
+            </div>
+            ${err && html`<div class="row-err">${err}</div>`}
+        `;
+    }
+
+    function App() {
+        const [items, setItems] = useState(null); // null = first load
+        const [online, setOnline] = useState(true);
+        const [authFailed, setAuthFailed] = useState(false);
+
+        useEffect(() => {
+            let alive = true;
+            const tick = async () => {
+                try {
+                    const res = await fetch(withToken("/api/items"), { cache: "no-store" });
+                    // 403 means the daemon is up but our token is missing/stale — a
+                    // distinct state from an unreachable daemon, with its own fix.
+                    if (res.status === 403) {
+                        if (!alive) return;
+                        setAuthFailed(true);
+                        setOnline(true);
+                        return;
+                    }
+                    if (!res.ok) throw new Error("bad status");
+                    const data = await res.json();
+                    if (!alive) return;
+                    setItems(Array.isArray(data.items) ? data.items : []);
+                    setAuthFailed(false);
+                    setOnline(true);
+                } catch (_) {
+                    if (!alive) return;
+                    setOnline(false); // keep whatever we last had
+                }
+            };
+            tick();
+            const iv = setInterval(tick, 2000);
+            return () => { alive = false; clearInterval(iv); };
+        }, []);
+
+        const onRemove = (kind, id) =>
+            setItems((prev) => (prev || []).filter((x) => !(x.kind === kind && x.id === id)));
+
+        // Group the already-sorted (newest-first) list under date headers.
+        const groups = [];
+        for (const it of items || []) {
+            const label = groupLabel(it.date);
+            let g = groups[groups.length - 1];
+            if (!g || g.label !== label) { g = { label, items: [] }; groups.push(g); }
+            g.items.push(it);
+        }
+
+        return html`
+            <header class="bar">
+                <div class="wordmark">Spootie<span class="prompt">~ screenshots</span></div>
+                <div class="conn">
+                    <span class=${"dot " + (authFailed || !online ? "off" : "live")}></span>
+                    ${authFailed ? "reauth" : online ? "watching" : "reconnecting"}
+                </div>
+            </header>
+
+            ${authFailed
+                ? html`<div class="banner">Session expired — run <code>spootie ui</code> in your terminal to reopen the dashboard.</div>`
+                : !online && items !== null
+                    ? html`<div class="banner">Can't reach the daemon — retrying every 2s…</div>`
+                    : null}
+
+            ${items === null
+                ? html`<div class="placeholder"><div class="glyph">◴</div><p>Connecting…</p></div>`
+                : items.length === 0
+                    ? html`
+                        <div class="placeholder">
+                            <div class="glyph">⌘⇧4</div>
+                            <h2>No uploads yet</h2>
+                            <p>Screenshots you confirm will show up here.</p>
+                        </div>`
+                    : html`
+                        <main>
+                            ${groups.map((g) => html`
+                                <section>
+                                    <div class="group-head">${g.label}</div>
+                                    ${g.items.map((it) => html`
+                                        <${Row} key=${it.kind + ":" + it.id} item=${it} onRemove=${onRemove} />`)}
+                                </section>`)}
+                            <div class="foot">— end of history —</div>
+                        </main>`}
+
+            <footer class="brandbar">Spootie · local dashboard on port ${PORT}</footer>
+        `;
+    }
+
+    render(html`<${App} />`, document.getElementById("app"));
+</script>

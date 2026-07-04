@@ -3,7 +3,7 @@ import { readFileSync, unlinkSync } from "node:fs";
 import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
-import { PREACT_STANDALONE_ASSET, VARIANT_A_HTML_ASSET } from "./embedded-assets.ts";
+import { DASHBOARD_HTML_ASSET, PREACT_STANDALONE_ASSET } from "./embedded-assets.ts";
 import { errorMessage } from "./errors.ts";
 import { readHistory, readLastUpload, removeFromHistory } from "./history.ts";
 import type { UploadQueue } from "./queue.ts";
@@ -53,7 +53,7 @@ export interface UiItem {
  * way, so no dev/compiled branch is needed here.
  */
 const STATIC_ROUTES: Record<string, { path: string; type: string }> = {
-    "/": { path: VARIANT_A_HTML_ASSET, type: "text/html; charset=utf-8" },
+    "/": { path: DASHBOARD_HTML_ASSET, type: "text/html; charset=utf-8" },
     "/vendor/preact-standalone.mjs": {
         path: PREACT_STANDALONE_ASSET,
         type: "text/javascript; charset=utf-8",
