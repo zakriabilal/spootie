@@ -134,8 +134,33 @@ retrying while paused.
 
 - `spootie last` — prints the most recent uploaded URL to stdout (exits 1 if
   nothing has been uploaded).
-- `spootie status` — LaunchAgent state, paused state, queue length, last
-  upload time, and the dashboard URL.
+- `spootie status` — a health report across setup, R2 auth, the expiry
+  lifecycle rule, the LaunchAgent, the running daemon, the offline queue and
+  upload counts. Every R2 check is time-bounded, so it prints promptly (and
+  exits 0) even fully offline; a failing check is reported, not fatal:
+
+    ```
+    Config
+      ✓ config      /Users/you/.config/spootie/config.json
+
+    R2
+      ✓ auth        credentials valid
+      ✓ lifecycle   expiry rule: 7 days
+      - exposed     42 object(s) live in bucket (whole bucket)
+
+    Daemon & queue
+      ✓ launchagent installed and loaded
+      ✓ daemon      running — http://127.0.0.1:53219/?token=…
+      - paused      no
+      - queue       0 pending upload(s)
+
+    History
+      - last upload 2026-07-05T12:00:00.000Z (https://files.example.com/…)
+      - uploads     42 recorded
+    ```
+
+    With no config it prints `✗ config  not configured — run spootie setup`,
+    skips the R2 checks, and still reports the local daemon/queue/history state.
 
 ### Dashboard
 

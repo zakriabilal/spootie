@@ -18,7 +18,32 @@ import {
 } from "./errors.ts";
 import { makeClient, uploadFile } from "./upload.ts";
 
-const LIFECYCLE_RULE_ID = "spootie-expiry";
+export const LIFECYCLE_RULE_ID = "spootie-expiry";
+
+/**
+ * Fetch the bucket's lifecycle rules, treating "no lifecycle configuration set"
+ * as an empty list rather than an error. Any other failure (AccessDenied when
+ * the token lacks bucket permissions, a network error, ...) is re-thrown so the
+ * caller can classify it. The optional `abortSignal` bounds the call so
+ * `spootie status` can't hang on it. Shared by setup (which merges spootie's
+ * rule into whatever it returns) and status (which looks for spootie's rule).
+ */
+export const fetchLifecycleRules = async (
+    client: S3Client,
+    config: Config,
+    options: { abortSignal?: AbortSignal } = {},
+): Promise<LifecycleRule[]> => {
+    try {
+        const current = await client.send(
+            new GetBucketLifecycleConfigurationCommand({ Bucket: config.bucket }),
+            { abortSignal: options.abortSignal },
+        );
+        return current.Rules ?? [];
+    } catch (err) {
+        if (isNoLifecycleConfiguration(err)) return [];
+        throw err;
+    }
+};
 
 /**
  * Interactive setup wizard: prompt for R2 settings, write the config file,
@@ -162,15 +187,7 @@ const applyLifecycleStep = async (client: S3Client, config: Config): Promise<voi
 const applyLifecycleRule = async (client: S3Client, config: Config): Promise<void> => {
     // PutBucketLifecycleConfiguration replaces the whole configuration, so
     // preserve any rules the user set outside spootie.
-    let rules: LifecycleRule[] = [];
-    try {
-        const current = await client.send(
-            new GetBucketLifecycleConfigurationCommand({ Bucket: config.bucket }),
-        );
-        rules = current.Rules ?? [];
-    } catch (err) {
-        if (!isNoLifecycleConfiguration(err)) throw err;
-    }
+    const rules = await fetchLifecycleRules(client, config);
 
     const spootieRule: LifecycleRule = {
         ID: LIFECYCLE_RULE_ID,

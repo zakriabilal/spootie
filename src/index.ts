@@ -5,11 +5,12 @@ import { copyToClipboard } from "./clipboard.ts";
 import { confirmUpload, notify, notifyError } from "./notify.ts";
 import { errorMessage, isRetryableNetworkError } from "./errors.ts";
 import { migrateLastUpload, readLastUpload, recordUpload } from "./history.ts";
-import { installAgent, isAgentInstalled, isAgentLoaded, uninstallAgent } from "./launchagent.ts";
-import { readQueueLength, UploadQueue } from "./queue.ts";
+import { installAgent, uninstallAgent } from "./launchagent.ts";
+import { UploadQueue } from "./queue.ts";
 import { readUiInfo, startUiServer, uiUrl } from "./server.ts";
 import { runSetup } from "./setup.ts";
 import { isPaused, migrateLegacyState, setPaused } from "./state.ts";
+import { runStatus } from "./status.ts";
 import { generateThumbnail } from "./thumbs.ts";
 import { uploadFile } from "./upload.ts";
 import { getScreenshotFolder, watchScreenshots } from "./watcher.ts";
@@ -106,29 +107,6 @@ const runLast = async (): Promise<void> => {
     // URL alone on stdout so it is pipeable; timestamp on stderr.
     console.log(last.url);
     console.error(`uploaded at ${last.uploadedAt}`);
-};
-
-const runStatus = async (): Promise<void> => {
-    const installed = await isAgentInstalled();
-    const agentLine = installed
-        ? isAgentLoaded()
-            ? "installed and loaded"
-            : "installed (not loaded)"
-        : "not installed";
-    console.log(`LaunchAgent: ${agentLine}`);
-
-    console.log(`Paused: ${(await isPaused()) ? "yes" : "no"}`);
-
-    const queueLength = await readQueueLength();
-    console.log(`Queue: ${queueLength} pending upload(s)`);
-
-    const last = await readLastUpload();
-    console.log(`Last upload: ${last ? `${last.uploadedAt} (${last.url})` : "none yet"}`);
-
-    const ui = await readUiInfo();
-    console.log(
-        `Dashboard: ${ui ? uiUrl(ui.port, ui.token) : "not running (start `spootie watch`)"}`,
-    );
 };
 
 const runUi = async (): Promise<void> => {

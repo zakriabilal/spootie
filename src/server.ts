@@ -556,11 +556,14 @@ const isDaemonListening = async (port: number, token: string): Promise<boolean> 
 };
 
 /**
- * Read ui.json to locate a running daemon's dashboard. Returns null if the file
- * is missing, malformed, or names a server that no longer answers on its port
- * (a stale record left by a crash), so callers never advertise a dead server.
+ * Read and validate ui.json WITHOUT probing the port. Returns the recorded
+ * {@link UiInfo} — which may name a daemon that has since died — or null if the
+ * file is missing or malformed. `spootie status` uses this together with a pid
+ * liveness check to tell a live daemon apart from a stale record left by a
+ * crash; {@link readUiInfo} layers the network probe on top for callers that
+ * need a URL they can actually open.
  */
-export const readUiInfo = async (): Promise<UiInfo | null> => {
+export const readUiInfoRaw = async (): Promise<UiInfo | null> => {
     try {
         const raw: unknown = await Bun.file(UI_INFO_PATH).json();
         if (
@@ -570,13 +573,23 @@ export const readUiInfo = async (): Promise<UiInfo | null> => {
             typeof (raw as { pid?: unknown }).pid === "number" &&
             typeof (raw as { token?: unknown }).token === "string"
         ) {
-            const info = raw as UiInfo;
-            if (await isDaemonListening(info.port, info.token)) return info;
+            return raw as UiInfo;
         }
         return null;
     } catch {
         return null;
     }
+};
+
+/**
+ * Read ui.json to locate a running daemon's dashboard. Returns null if the file
+ * is missing, malformed, or names a server that no longer answers on its port
+ * (a stale record left by a crash), so callers never advertise a dead server.
+ */
+export const readUiInfo = async (): Promise<UiInfo | null> => {
+    const info = await readUiInfoRaw();
+    if (info !== null && (await isDaemonListening(info.port, info.token))) return info;
+    return null;
 };
 
 /**

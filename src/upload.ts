@@ -1,6 +1,7 @@
 import {
     DeleteObjectCommand,
     DeleteObjectsCommand,
+    ListObjectsV2Command,
     PutObjectCommand,
     S3Client,
 } from "@aws-sdk/client-s3";
@@ -147,6 +148,37 @@ export const contentDispositionAttachment = (fileName: string): string => {
 export const deleteObject = async (key: string, config: Config): Promise<void> => {
     const client = makeClient(config);
     await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+};
+
+/**
+ * Count every live object in the bucket by paging through ListObjectsV2 until
+ * the listing is no longer truncated. Only the running total is kept — keys are
+ * never collected — so memory stays flat regardless of bucket size. The
+ * optional `abortSignal` is threaded into every page request so `spootie status`
+ * can bound the whole walk and report "unreachable" instead of hanging offline.
+ *
+ * Note this counts the ENTIRE bucket, not just spootie's uploads: R2 buckets
+ * are typically dedicated to spootie, but a shared bucket would inflate this.
+ */
+export const countBucketObjects = async (
+    config: Config,
+    options: { abortSignal?: AbortSignal } = {},
+): Promise<number> => {
+    const client = makeClient(config);
+    let total = 0;
+    let continuationToken: string | undefined;
+    do {
+        const res = await client.send(
+            new ListObjectsV2Command({
+                Bucket: config.bucket,
+                ContinuationToken: continuationToken,
+            }),
+            { abortSignal: options.abortSignal },
+        );
+        total += res.KeyCount ?? res.Contents?.length ?? 0;
+        continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (continuationToken !== undefined);
+    return total;
 };
 
 /** The most keys a single S3 DeleteObjects request accepts. */
