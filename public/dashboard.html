@@ -126,6 +126,66 @@
         color: var(--faint);
     }
 
+    /* ---- selection toolbar (between drop zone and list) ---- */
+    .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 38px;
+        padding: 7px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-elev);
+        font-family: var(--mono);
+    }
+    .toolbar .spacer { flex: 1 1 auto; }
+    .tb-count {
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+    .tb-status {
+        font-size: 11px;
+        letter-spacing: 0.02em;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+    .tb-status.err { color: var(--danger); }
+    .tb-confirm {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .tb-confirm-q {
+        font-size: 11px;
+        color: var(--danger);
+        white-space: nowrap;
+    }
+
+    /* ---- per-row selection checkbox ---- */
+    .checkbox {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        border-radius: 4px;
+        border: 1px solid var(--border-strong);
+        background: var(--bg-elev);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1;
+        color: var(--bg);
+    }
+    .checkbox.on { background: var(--accent); border-color: var(--accent); }
+    .row.selectable { cursor: pointer; user-select: none; }
+    .row.selected { background: rgba(125, 217, 146, 0.06); }
+    .row.selectable:focus-visible {
+        outline: 1px solid var(--border-strong);
+        outline-offset: -1px;
+    }
+
     /* ---- offline banner ---- */
     .banner {
         font-family: var(--mono);
@@ -394,7 +454,141 @@
         }
     };
 
-    function Row({ item, onRemove }) {
+    /**
+     * Delete several items in one request (multi-select and "Empty all" both use
+     * this; Empty all just passes every id). The server replies { ok, deleted,
+     * failed } with 200 (all gone), 207 (partial), or 502 (all failed). fetch's
+     * res.ok covers 200/207, so a partial success returns normally and the caller
+     * surfaces failed.length; only a 502/parse failure throws. Returns the parsed
+     * body so the caller can prune the confirmed-deleted ids optimistically.
+     */
+    const deleteBatch = async (ids) => {
+        const res = await fetch(withToken("/api/delete-batch"), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ keys: ids }),
+        });
+        let data = null;
+        try { data = await res.json(); } catch (_) {}
+        if (!data || !Array.isArray(data.deleted) || !Array.isArray(data.failed)) {
+            // 403 (plain text), 400 ({error}), or an unparseable body.
+            throw new Error((data && data.error) || "Delete failed");
+        }
+        if (!res.ok && data.deleted.length === 0) {
+            // 502: everything failed. Nothing was removed server-side.
+            throw new Error(data.failed.length + " item" + (data.failed.length === 1 ? "" : "s") + " failed");
+        }
+        return data;
+    };
+
+    /** "3 items failed" / "" — the trailing status a batch delete leaves behind. */
+    const failSummary = (failed) =>
+        failed && failed.length
+            ? failed.length + " item" + (failed.length === 1 ? "" : "s") + " failed"
+            : "";
+
+    /**
+     * A destructive control that arms before it fires — no window.confirm. Idle
+     * shows `label`; clicking arms it into a red "Really delete N items? Yes / No"
+     * that disarms on No or after ~5s. Yes runs `onConfirm` (async), showing
+     * "Deleting…" and then any summary string it returns (e.g. partial failures)
+     * or the thrown error, briefly, before returning to idle. Used for both
+     * "Delete selected" and the quieter "Empty all".
+     */
+    function ConfirmAction({ label, count, disabled, quiet, onConfirm }) {
+        const [phase, setPhase] = useState("idle"); // idle | armed | busy | result
+        const [msg, setMsg] = useState("");
+        const [msgErr, setMsgErr] = useState(false);
+        const timers = useRef([]);
+
+        useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+        const track = (fn, ms) => { timers.current.push(setTimeout(fn, ms)); };
+
+        const arm = () => {
+            setPhase("armed");
+            // Auto-disarm if the user walks away; only if still armed.
+            track(() => setPhase((p) => (p === "armed" ? "idle" : p)), 5000);
+        };
+        const confirm = async () => {
+            setPhase("busy");
+            try {
+                const summary = await onConfirm();
+                if (summary) {
+                    setMsg(summary);
+                    setMsgErr(false);
+                    setPhase("result");
+                    track(() => setPhase("idle"), 4000);
+                } else {
+                    setPhase("idle");
+                }
+            } catch (e) {
+                setMsg((e && e.message) || "Delete failed");
+                setMsgErr(true);
+                setPhase("result");
+                track(() => setPhase("idle"), 4000);
+            }
+        };
+
+        if (phase === "busy") return html`<span class="tb-status">Deleting…</span>`;
+        if (phase === "result") {
+            return html`<span class=${"tb-status" + (msgErr ? " err" : "")}>${msg}</span>`;
+        }
+        if (phase === "armed") {
+            return html`
+                <span class="tb-confirm">
+                    <span class="tb-confirm-q">Really delete ${count} item${count === 1 ? "" : "s"}?</span>
+                    <button class="btn danger armed" onClick=${confirm}>Yes</button>
+                    <button class="btn" onClick=${() => setPhase("idle")}>No</button>
+                </span>`;
+        }
+        return html`
+            <button
+                class=${"btn" + (quiet ? "" : " danger")}
+                onClick=${arm}
+                disabled=${disabled}>
+                ${label}
+            </button>`;
+    }
+
+    /**
+     * Compact row between the drop zone and the list, shown whenever there are
+     * items. Out of selection mode it offers a "Select" toggle and a quiet
+     * "Empty all"; in selection mode it shows the selected count, All/None quick
+     * links, an armed "Delete selected (n)", and Cancel.
+     */
+    function Toolbar({
+        items, selecting, selected,
+        onEnter, onExit, onAll, onNone, onDeleteSelected, onEmptyAll,
+    }) {
+        if (!selecting) {
+            return html`
+                <div class="toolbar">
+                    <button class="btn" onClick=${onEnter}>Select</button>
+                    <span class="spacer"></span>
+                    <${ConfirmAction}
+                        label="Empty all"
+                        count=${items.length}
+                        quiet=${true}
+                        onConfirm=${onEmptyAll} />
+                </div>`;
+        }
+        const n = selected.size;
+        return html`
+            <div class="toolbar">
+                <span class="tb-count">${n} selected</span>
+                <button class="btn" onClick=${onAll}>All</button>
+                <button class="btn" onClick=${onNone}>None</button>
+                <span class="spacer"></span>
+                <${ConfirmAction}
+                    label=${"Delete selected (" + n + ")"}
+                    count=${n}
+                    disabled=${n === 0}
+                    onConfirm=${onDeleteSelected} />
+                <button class="btn" onClick=${onExit}>Cancel</button>
+            </div>`;
+    }
+
+    function Row({ item, onRemove, selecting, selected, onToggle }) {
         const [copied, setCopied] = useState(false);
         const [armed, setArmed] = useState(false);
         const [busy, setBusy] = useState(false);
@@ -439,9 +633,25 @@
         const thumbSrc = item.thumb
             ? withToken("/api/thumb?key=" + encodeURIComponent(item.id))
             : null;
+        // In selection mode the whole row is a checkbox: clicking (or Space/Enter)
+        // toggles it, and the per-item actions give way to the checkbox.
+        const onRowClick = selecting ? () => onToggle(item.id) : null;
+        const onRowKey = selecting
+            ? (e) => {
+                if (e.key === " " || e.key === "Enter") { e.preventDefault(); onToggle(item.id); }
+            }
+            : null;
         return html`
-            <div class=${"row" + (queued ? " queued" : "")}>
-                <span class="status-dot"></span>
+            <div
+                class=${"row" + (queued ? " queued" : "") + (selecting ? " selectable" : "") + (selecting && selected ? " selected" : "")}
+                onClick=${onRowClick}
+                onKeyDown=${onRowKey}
+                role=${selecting ? "checkbox" : null}
+                aria-checked=${selecting ? (selected ? "true" : "false") : null}
+                tabindex=${selecting ? "0" : null}>
+                ${selecting
+                    ? html`<span class=${"checkbox" + (selected ? " on" : "")} aria-hidden="true">${selected ? "✓" : ""}</span>`
+                    : html`<span class="status-dot"></span>`}
                 ${thumbSrc
                     ? html`<img class="thumb" loading="lazy" alt="" src=${thumbSrc} />`
                     : html`<span class="thumb-ph" aria-hidden="true">▤</span>`}
@@ -452,21 +662,22 @@
                         ? html`<span class="qlabel">queued, retry pending<span class="dots"></span></span>`
                         : html`<span class="time">${fmtTime(item.date)}</span>`}
                 </div>
-                <div class="actions">
-                    ${!queued && html`
-                        <button class=${"btn" + (copied ? " copied" : "")} onClick=${onCopy}>
-                            ${copied ? "Copied" : "Copy"}
-                        </button>`}
-                    <button
-                        class=${"btn danger" + (armed ? " armed" : "")}
-                        onClick=${onDelete}
-                        disabled=${busy}
-                        title=${queued ? "Cancel this queued upload" : "Delete from R2"}>
-                        ${busy ? "…" : armed ? "Sure?" : queued ? "Cancel" : "Delete"}
-                    </button>
-                </div>
+                ${!selecting && html`
+                    <div class="actions">
+                        ${!queued && html`
+                            <button class=${"btn" + (copied ? " copied" : "")} onClick=${onCopy}>
+                                ${copied ? "Copied" : "Copy"}
+                            </button>`}
+                        <button
+                            class=${"btn danger" + (armed ? " armed" : "")}
+                            onClick=${onDelete}
+                            disabled=${busy}
+                            title=${queued ? "Cancel this queued upload" : "Delete from R2"}>
+                            ${busy ? "…" : armed ? "Sure?" : queued ? "Cancel" : "Delete"}
+                        </button>
+                    </div>`}
             </div>
-            ${err && html`<div class="row-err">${err}</div>`}
+            ${!selecting && err && html`<div class="row-err">${err}</div>`}
         `;
     }
 
@@ -583,6 +794,11 @@
         const [items, setItems] = useState(null); // null = first load
         const [online, setOnline] = useState(true);
         const [authFailed, setAuthFailed] = useState(false);
+        // Selection mode + the set of selected item ids. Kept here (not in the
+        // Toolbar/Row) so it survives the 2s poll re-render; pruned below when the
+        // items it references disappear.
+        const [selecting, setSelecting] = useState(false);
+        const [selected, setSelected] = useState(() => new Set());
 
         useEffect(() => {
             let alive = true;
@@ -613,8 +829,69 @@
             return () => { alive = false; clearInterval(iv); };
         }, []);
 
+        // Prune selection against the live list every time it changes, so ids for
+        // items that were deleted (here or elsewhere) drop out of the Set and the
+        // "n selected" count never counts vanished rows. Leaving selection mode
+        // when the list empties (e.g. after Empty all) keeps the toolbar honest.
+        useEffect(() => {
+            if (items === null) return;
+            if (items.length === 0) {
+                setSelecting(false);
+                setSelected((prev) => (prev.size === 0 ? prev : new Set()));
+                return;
+            }
+            setSelected((prev) => {
+                if (prev.size === 0) return prev;
+                const live = new Set(items.map((it) => it.id));
+                let changed = false;
+                const next = new Set();
+                for (const id of prev) {
+                    if (live.has(id)) next.add(id);
+                    else changed = true;
+                }
+                return changed ? next : prev;
+            });
+        }, [items]);
+
         const onRemove = (kind, id) =>
             setItems((prev) => (prev || []).filter((x) => !(x.kind === kind && x.id === id)));
+
+        // Optimistically drop confirmed-deleted ids from both the list and the
+        // selection so the UI updates before the next poll reconciles.
+        const onRemoveMany = (ids) => {
+            const drop = new Set(ids);
+            setItems((prev) => (prev || []).filter((x) => !drop.has(x.id)));
+            setSelected((prev) => {
+                if (prev.size === 0) return prev;
+                const next = new Set(prev);
+                for (const id of ids) next.delete(id);
+                return next;
+            });
+        };
+
+        const toggleSelected = (id) =>
+            setSelected((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+            });
+
+        const doDeleteSelected = async () => {
+            const ids = [...selected];
+            if (ids.length === 0) return "";
+            const data = await deleteBatch(ids);
+            onRemoveMany(data.deleted);
+            return failSummary(data.failed);
+        };
+
+        const doEmptyAll = async () => {
+            const ids = (items || []).map((it) => it.id);
+            if (ids.length === 0) return "";
+            const data = await deleteBatch(ids);
+            onRemoveMany(data.deleted);
+            return failSummary(data.failed);
+        };
 
         // Group the already-sorted (newest-first) list under date headers.
         const groups = [];
@@ -642,6 +919,19 @@
                     ? html`<div class="banner">Can't reach the daemon — retrying every 2s…</div>`
                     : null}
 
+            ${items && items.length > 0
+                ? html`<${Toolbar}
+                        items=${items}
+                        selecting=${selecting}
+                        selected=${selected}
+                        onEnter=${() => setSelecting(true)}
+                        onExit=${() => { setSelecting(false); setSelected(new Set()); }}
+                        onAll=${() => setSelected(new Set(items.map((it) => it.id)))}
+                        onNone=${() => setSelected(new Set())}
+                        onDeleteSelected=${doDeleteSelected}
+                        onEmptyAll=${doEmptyAll} />`
+                : null}
+
             ${items === null
                 ? html`<div class="placeholder"><div class="glyph">◴</div><p>Connecting…</p></div>`
                 : items.length === 0
@@ -657,7 +947,13 @@
                                 <section>
                                     <div class="group-head">${g.label}</div>
                                     ${g.items.map((it) => html`
-                                        <${Row} key=${it.kind + ":" + it.id} item=${it} onRemove=${onRemove} />`)}
+                                        <${Row}
+                                            key=${it.kind + ":" + it.id}
+                                            item=${it}
+                                            onRemove=${onRemove}
+                                            selecting=${selecting}
+                                            selected=${selected.has(it.id)}
+                                            onToggle=${toggleSelected} />`)}
                                 </section>`)}
                             <div class="foot">— end of history —</div>
                         </main>`}

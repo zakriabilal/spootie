@@ -1,7 +1,13 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+    DeleteObjectCommand,
+    DeleteObjectsCommand,
+    PutObjectCommand,
+    S3Client,
+} from "@aws-sdk/client-s3";
 import { randomBytes } from "node:crypto";
 import { extname } from "node:path";
 import type { Config } from "./config.ts";
+import { errorMessage } from "./errors.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
     ".png": "image/png",
@@ -141,4 +147,62 @@ export const contentDispositionAttachment = (fileName: string): string => {
 export const deleteObject = async (key: string, config: Config): Promise<void> => {
     const client = makeClient(config);
     await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+};
+
+/** The most keys a single S3 DeleteObjects request accepts. */
+const DELETE_OBJECTS_LIMIT = 1000;
+
+/**
+ * Delete many objects from R2 with the batched DeleteObjects API rather than N
+ * sequential DeleteObject calls. Keys are chunked into requests of at most
+ * {@link DELETE_OBJECTS_LIMIT} and sent in Quiet mode — the response then omits
+ * the successfully-deleted keys and returns only per-key {@link errorMessage}s,
+ * so we infer success as "in the chunk and not reported as an error".
+ *
+ * Reports honestly per key: `deleted` lists the keys R2 confirmed gone, `failed`
+ * pairs each remaining key with its error. A whole request that throws (network
+ * down, auth error) marks every key in that chunk as failed with the thrown
+ * message, so the caller can keep those items around for a later retry.
+ */
+export const deleteObjects = async (
+    keys: string[],
+    config: Config,
+): Promise<{ deleted: string[]; failed: { key: string; error: string }[] }> => {
+    const client = makeClient(config);
+    const deleted: string[] = [];
+    const failed: { key: string; error: string }[] = [];
+
+    for (let i = 0; i < keys.length; i += DELETE_OBJECTS_LIMIT) {
+        const chunk = keys.slice(i, i + DELETE_OBJECTS_LIMIT);
+        try {
+            const res = await client.send(
+                new DeleteObjectsCommand({
+                    Bucket: config.bucket,
+                    Delete: {
+                        Objects: chunk.map((Key) => ({ Key })),
+                        // Quiet: response carries only errors, not the (many) OKs.
+                        Quiet: true,
+                    },
+                }),
+            );
+            const failedKeys = new Set<string>();
+            for (const e of res.Errors ?? []) {
+                if (typeof e.Key === "string") {
+                    failedKeys.add(e.Key);
+                    failed.push({ key: e.Key, error: e.Message ?? e.Code ?? "Delete failed" });
+                }
+            }
+            for (const key of chunk) {
+                if (!failedKeys.has(key)) deleted.push(key);
+            }
+        } catch (err) {
+            // The whole request failed: treat every key in this chunk as failed so
+            // the caller retains them (in history) for a retry rather than dropping
+            // records for objects that may still exist.
+            const message = errorMessage(err);
+            for (const key of chunk) failed.push({ key, error: message });
+        }
+    }
+
+    return { deleted, failed };
 };

@@ -124,6 +124,29 @@ export const removeFromHistory = async (key: string): Promise<boolean> => {
     }
 };
 
+/**
+ * Remove every history entry whose key is in `keys`, in a single locked
+ * read-modify-write. Returns how many entries were removed. Never throws
+ * (best-effort). Preferred over N {@link removeFromHistory} calls for a batch
+ * delete: one atomic write under one lock acquisition instead of one per key.
+ */
+export const removeManyFromHistory = async (keys: string[]): Promise<number> => {
+    if (keys.length === 0) return 0;
+    const drop = new Set(keys);
+    try {
+        return await withHistoryLock(async () => {
+            const entries = await readHistory();
+            const kept = entries.filter((e) => !drop.has(e.key));
+            const removed = entries.length - kept.length;
+            if (removed > 0) await writeHistory(kept);
+            return removed;
+        });
+    } catch (err) {
+        console.error(`spootie: could not update upload history: ${errorMessage(err)}`);
+        return 0;
+    }
+};
+
 /** The most recent successful upload, or null if there are none. */
 export const readLastUpload = async (): Promise<HistoryEntry | null> => {
     const entries = await readHistory();

@@ -6,11 +6,23 @@ import { copyToClipboard } from "./clipboard.ts";
 import type { Config } from "./config.ts";
 import { DASHBOARD_HTML_ASSET, PREACT_STANDALONE_ASSET } from "./embedded-assets.ts";
 import { errorMessage, errorStatus } from "./errors.ts";
-import { readHistory, readLastUpload, recordUpload, removeFromHistory } from "./history.ts";
+import {
+    readHistory,
+    readLastUpload,
+    recordUpload,
+    removeFromHistory,
+    removeManyFromHistory,
+} from "./history.ts";
 import type { UploadQueue } from "./queue.ts";
 import { DATA_DIR, ensurePrivateDir, isPaused, setPaused } from "./state.ts";
 import { deleteThumbnail, generateThumbnailFromBytes, thumbPathForKey } from "./thumbs.ts";
-import { contentDispositionAttachment, deleteObject, generateKey, uploadBytes } from "./upload.ts";
+import {
+    contentDispositionAttachment,
+    deleteObject,
+    deleteObjects,
+    generateKey,
+    uploadBytes,
+} from "./upload.ts";
 
 /**
  * Largest multipart body the dashboard upload route accepts (512 MB), set as
@@ -158,6 +170,93 @@ const handleDelete = async (
     // Best-effort: drop the local thumbnail too so it doesn't linger orphaned.
     await deleteThumbnail(entry.key);
     return json({ ok: true });
+};
+
+/** Largest batch /api/delete-batch accepts, matching S3's DeleteObjects cap. */
+const MAX_DELETE_BATCH = 1000;
+
+/**
+ * Delete many items at once from the dashboard — the multi-select "Delete
+ * selected" action and "Empty all" both post here (Empty all is just a batch of
+ * every item id, so the server stays generic). Token + Origin gated by the
+ * caller exactly like {@link handleDelete}.
+ *
+ * The UI sends item ids in `keys`. An id is either a queue entry's UUID (a queued
+ * item, cancelled via {@link UploadQueue.cancel}) or an R2 object key (an
+ * uploaded item). We distinguish the same way handleDelete does — a queued id is
+ * never an R2 key — and, mirroring handleDelete's safety rule, only ever delete
+ * an uploaded key we actually recorded, never an arbitrary bucket object named by
+ * the request. Uploaded keys are removed with the batched
+ * {@link deleteObjects} call rather than N sequential deletes.
+ *
+ * Reporting is honest and per-key: `{ ok, deleted, failed }`. A key whose R2
+ * delete failed is left in history so it stays visible and retryable. Status is
+ * 200 when everything succeeded, 502 when everything failed, and 207 for a
+ * partial success (still a JSON body the UI reads either way).
+ */
+const handleDeleteBatch = async (
+    req: Request,
+    queue: UploadQueue,
+    config: Config,
+): Promise<Response> => {
+    let body: unknown;
+    try {
+        body = await req.json();
+    } catch {
+        return json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { keys } = (body ?? {}) as { keys?: unknown };
+    if (
+        !Array.isArray(keys) ||
+        keys.length === 0 ||
+        keys.length > MAX_DELETE_BATCH ||
+        !keys.every((k) => typeof k === "string")
+    ) {
+        return json(
+            { error: `Expected { keys: string[] } with 1–${MAX_DELETE_BATCH} entries` },
+            400,
+        );
+    }
+
+    const deleted: string[] = [];
+    const failed: { key: string; error: string }[] = [];
+
+    // De-dupe so a repeated id can't be counted or deleted twice.
+    const ids = [...new Set(keys as string[])];
+
+    // Partition into queued ids (cancel) and recorded uploaded keys (R2 delete).
+    // Anything matching neither is reported failed rather than silently ignored.
+    const queuedIds = new Set(queue.list().map((e) => e.id));
+    const historyKeys = new Set((await readHistory()).map((e) => e.key));
+
+    const uploadedKeys: string[] = [];
+    for (const id of ids) {
+        if (queuedIds.has(id)) {
+            const cancelled = await queue.cancel(id);
+            if (cancelled) deleted.push(id);
+            else failed.push({ key: id, error: "No such queued item" });
+        } else if (historyKeys.has(id)) {
+            uploadedKeys.push(id);
+        } else {
+            failed.push({ key: id, error: "No such item" });
+        }
+    }
+
+    if (uploadedKeys.length > 0) {
+        const res = await deleteObjects(uploadedKeys, config);
+        deleted.push(...res.deleted);
+        failed.push(...res.failed);
+        // Only forget keys R2 confirmed gone; a failed key stays in history so the
+        // user can still see and retry it. One atomic history write for the batch.
+        await removeManyFromHistory(res.deleted);
+        // Best-effort: drop each deleted item's local thumbnail so none linger.
+        for (const key of res.deleted) await deleteThumbnail(key);
+    }
+
+    const ok = failed.length === 0;
+    const status = ok ? 200 : deleted.length === 0 ? 502 : 207;
+    return json({ ok, deleted, failed }, status);
 };
 
 /**
@@ -365,6 +464,12 @@ export const startUiServer = async ({
                     return new Response("Forbidden", { status: 403 });
                 }
                 return handleDelete(req, queue, config);
+            }
+            if (pathname === "/api/delete-batch" && req.method === "POST") {
+                if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+                    return new Response("Forbidden", { status: 403 });
+                }
+                return handleDeleteBatch(req, queue, config);
             }
             if (pathname === "/api/pause" && req.method === "POST") {
                 if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
