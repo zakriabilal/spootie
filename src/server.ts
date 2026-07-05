@@ -4,7 +4,11 @@ import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { copyToClipboard } from "./clipboard.ts";
 import type { Config } from "./config.ts";
-import { DASHBOARD_HTML_ASSET, PREACT_STANDALONE_ASSET } from "./embedded-assets.ts";
+import {
+    DASHBOARD_HTML_ASSET,
+    FAVICON_SVG_ASSET,
+    PREACT_STANDALONE_ASSET,
+} from "./embedded-assets.ts";
 import { errorMessage, errorStatus } from "./errors.ts";
 import {
     readHistory,
@@ -78,11 +82,18 @@ export interface UiItem {
  * or a $bunfs path in the compiled binary — Bun.file() reads both the same
  * way, so no dev/compiled branch is needed here.
  */
-const STATIC_ROUTES: Record<string, { path: string; type: string }> = {
+const STATIC_ROUTES: Record<string, { path: string; type: string; cache?: string }> = {
     "/": { path: DASHBOARD_HTML_ASSET, type: "text/html; charset=utf-8" },
     "/vendor/preact-standalone.mjs": {
         path: PREACT_STANDALONE_ASSET,
         type: "text/javascript; charset=utf-8",
+    },
+    // The favicon never changes at a given path and carries no secrets, so let the
+    // browser cache it hard rather than re-fetch it on every dashboard visit.
+    "/favicon.svg": {
+        path: FAVICON_SVG_ASSET,
+        type: "image/svg+xml",
+        cache: "public, max-age=31536000, immutable",
     },
 };
 
@@ -376,7 +387,9 @@ const serveStatic = async (pathname: string): Promise<Response> => {
     if (route === undefined) return new Response("Not found", { status: 404 });
     const file = Bun.file(route.path);
     if (!(await file.exists())) return new Response("Not found", { status: 404 });
-    return new Response(file, { headers: { "content-type": route.type } });
+    const headers: Record<string, string> = { "content-type": route.type };
+    if (route.cache !== undefined) headers["cache-control"] = route.cache;
+    return new Response(file, { headers });
 };
 
 /** Raised when another live daemon already owns ui.json. */

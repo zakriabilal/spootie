@@ -27,6 +27,11 @@ declare module "*/public/dashboard.html" {
     export default path;
 }
 
+declare module "*/public/favicon.svg" {
+    const path: string;
+    export default path;
+}
+
 declare module "*/preact-standalone.mjs" {
     const path: string;
     export default path;

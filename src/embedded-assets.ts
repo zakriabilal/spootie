@@ -25,8 +25,10 @@
 // already broken.
 import alerterAsset from "../vendor/alerter" with { type: "file" };
 import dashboardHtmlAsset from "../public/dashboard.html" with { type: "file" };
+import faviconSvgAsset from "../public/favicon.svg" with { type: "file" };
 import preactStandaloneAsset from "../public/vendor/preact-standalone.mjs" with { type: "file" };
 
 export const ALERTER_ASSET: string = alerterAsset;
 export const DASHBOARD_HTML_ASSET: string = dashboardHtmlAsset;
+export const FAVICON_SVG_ASSET: string = faviconSvgAsset;
 export const PREACT_STANDALONE_ASSET: string = preactStandaloneAsset;
