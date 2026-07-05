@@ -1,14 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { rename, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-import type { Config } from "./config.ts";
-import { errorMessage, isRetryableNetworkError } from "./errors.ts";
-import { copyToClipboard } from "./clipboard.ts";
-import { recordUpload } from "./history.ts";
-import { notify, notifyError, offerCopyUrl } from "./notify.ts";
-import { DATA_DIR, ensurePrivateDir } from "./state.ts";
+import { basename, join } from "node:path";
+import type { Config } from "../lib/config.ts";
+import { errorMessage, isRetryableNetworkError } from "../lib/errors.ts";
+import { recordUpload } from "../lib/history.ts";
+import { notify, notifyError } from "../lib/notify.ts";
+import { createJsonLoader, createJsonWriter } from "../lib/persist.ts";
+import { DATA_DIR } from "../lib/state.ts";
 import { generateThumbnail } from "./thumbs.ts";
-import { deleteObject, uploadFile } from "./upload.ts";
+import { deleteObject, uploadFile } from "../lib/upload.ts";
 
 export const QUEUE_PATH = join(DATA_DIR, "queue.json");
 
@@ -33,8 +32,13 @@ export class UploadQueue {
     private draining = false;
     private timer: ReturnType<typeof setTimeout> | null = null;
     private backoffMs = INITIAL_BACKOFF_MS;
-    /** Serializes persist() so concurrent writes land in call order. */
-    private persistLock: Promise<unknown> = Promise.resolve();
+    /**
+     * Atomically persist the queue, serialized so out-of-order writeFile/rename
+     * pairs can't let a stale snapshot win the rename — an HTTP cancel racing the
+     * drain loop's removeEntry could otherwise resurrect a removed entry. See
+     * {@link createJsonWriter}.
+     */
+    private readonly persist = createJsonWriter<QueueEntry[]>(QUEUE_PATH);
 
     constructor(private readonly config: Config) {}
 
@@ -56,7 +60,7 @@ export class UploadQueue {
             filePath,
             queuedAt: new Date().toISOString(),
         });
-        await this.persist();
+        await this.persist(this.entries);
         console.log(`spootie: queued ${basename(filePath)} for retry`);
         notify(basename(filePath), "Offline — upload queued");
         this.scheduleDrain(this.backoffMs);
@@ -115,9 +119,7 @@ export class UploadQueue {
                     });
                     // Local-only preview; fire-and-forget so it never delays the drain.
                     generateThumbnail(key, entry.filePath);
-                    // Don't block the drain on the user's response; and never write
-                    // the clipboard unprompted for late completions.
-                    void this.offerCopy(url);
+                    notify(name, "Uploaded — copy the link from the dashboard");
                 } catch (err) {
                     if (isRetryableNetworkError(err)) {
                         console.error(
@@ -146,21 +148,10 @@ export class UploadQueue {
         }
     }
 
-    private async offerCopy(url: string): Promise<void> {
-        try {
-            if (await offerCopyUrl(url)) {
-                await copyToClipboard(url);
-                notify(url, "URL copied");
-            }
-        } catch (err) {
-            console.error(`spootie: copy offer failed: ${errorMessage(err)}`);
-        }
-    }
-
     /** Remove a specific entry by reference (safe against reordering) and persist. */
     private async removeEntry(entry: QueueEntry): Promise<void> {
         this.entries = this.entries.filter((e) => e !== entry);
-        await this.persist();
+        await this.persist(this.entries);
     }
 
     /** A snapshot of the pending queued entries (used by the UI server). */
@@ -176,64 +167,22 @@ export class UploadQueue {
         const before = this.entries.length;
         this.entries = this.entries.filter((e) => e.id !== id);
         if (this.entries.length === before) return false;
-        await this.persist();
+        await this.persist(this.entries);
         return true;
-    }
-
-    /**
-     * Atomically persist the queue, serialized so out-of-order writeFile/rename
-     * pairs can't let a stale snapshot win the rename. Without this, an HTTP
-     * cancel racing the drain loop's removeEntry could resurrect a removed entry:
-     * a slower earlier write finishing after a later rename would leave the file
-     * describing the earlier state while memory holds the later one. Each queued
-     * write persists the latest in-memory state, and the last-queued write lands
-     * last.
-     */
-    private persist(): Promise<void> {
-        const run = this.persistLock.then(
-            () => this.writeEntries(),
-            () => this.writeEntries(),
-        );
-        // Swallow errors into the lock so one failed write can't wedge the chain;
-        // the original rejection is still surfaced to persist()'s caller via `run`.
-        this.persistLock = run.then(
-            () => undefined,
-            () => undefined,
-        );
-        return run;
-    }
-
-    private async writeEntries(): Promise<void> {
-        await ensurePrivateDir(dirname(QUEUE_PATH));
-        const tempPath = `${QUEUE_PATH}.tmp`;
-        await writeFile(tempPath, `${JSON.stringify(this.entries, null, 2)}\n`, { mode: 0o600 });
-        await rename(tempPath, QUEUE_PATH);
     }
 }
 
 /** Number of pending queued uploads (reads the queue file; used by status). */
 export const readQueueLength = async (): Promise<number> => (await loadEntries()).length;
 
-const loadEntries = async (): Promise<QueueEntry[]> => {
-    try {
-        const raw: unknown = await Bun.file(QUEUE_PATH).json();
-        if (!Array.isArray(raw)) return [];
-        return raw
-            .filter(
-                (item): item is { filePath: string; queuedAt: string; id?: unknown } =>
-                    typeof item === "object" &&
-                    item !== null &&
-                    typeof (item as { filePath?: unknown }).filePath === "string" &&
-                    typeof (item as { queuedAt?: unknown }).queuedAt === "string",
-            )
-            .map((item) => ({
-                // Backfill an id for entries persisted before ids existed.
-                id: typeof item.id === "string" ? item.id : randomUUID(),
-                filePath: item.filePath,
-                queuedAt: item.queuedAt,
-            }));
-    } catch {
-        // Missing or corrupt queue file: start fresh.
-        return [];
-    }
-};
+const loadEntries = createJsonLoader<QueueEntry>(QUEUE_PATH, (item) => {
+    if (typeof item !== "object" || item === null) return null;
+    const { filePath, queuedAt, id } = item as {
+        filePath?: unknown;
+        queuedAt?: unknown;
+        id?: unknown;
+    };
+    if (typeof filePath !== "string" || typeof queuedAt !== "string") return null;
+    // Backfill an id for entries persisted before ids existed.
+    return { id: typeof id === "string" ? id : randomUUID(), filePath, queuedAt };
+});

@@ -1,17 +1,17 @@
-import { CONFIG_PATH, loadConfig, type Config } from "./config.ts";
+import { CONFIG_PATH, loadConfig, type Config } from "../lib/config.ts";
 import {
     errorMessage,
     isAccessDenied,
     isBadCredentials,
     isRetryableNetworkError,
-} from "./errors.ts";
-import { readHistory, readLastUpload } from "./history.ts";
+} from "../lib/errors.ts";
+import { readHistory, readLastUpload } from "../lib/history.ts";
 import { isAgentInstalled, isAgentLoaded } from "./launchagent.ts";
-import { readQueueLength } from "./queue.ts";
-import { readUiInfoRaw, uiUrl } from "./server.ts";
+import { readQueueLength } from "../daemon/queue.ts";
+import { readUiInfoRaw, uiUrl } from "../daemon/server.ts";
 import { fetchLifecycleRules, LIFECYCLE_RULE_ID } from "./setup.ts";
-import { isPaused } from "./state.ts";
-import { countBucketObjects, makeClient } from "./upload.ts";
+import { isPaused } from "../lib/state.ts";
+import { countBucketObjects, makeClient } from "../lib/upload.ts";
 import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 
 /**

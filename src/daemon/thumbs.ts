@@ -13,9 +13,9 @@
  */
 import { chmod, unlink, writeFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import { errorMessage } from "./errors.ts";
-import { markThumbGenerated } from "./history.ts";
-import { DATA_DIR, ensurePrivateDir } from "./state.ts";
+import { errorMessage } from "../lib/errors.ts";
+import { markThumbGenerated } from "../lib/history.ts";
+import { DATA_DIR, ensurePrivateDir } from "../lib/state.ts";
 
 /** Where thumbnails live: a private (0700) subdir of the shared state dir. */
 export const THUMBS_DIR = join(DATA_DIR, "thumbs");
@@ -124,12 +124,18 @@ const thumbnailFromBytes = async (
     }
 };
 
-export const createThumbnail = async (key: string, sourcePath: string): Promise<void> => {
-    if (!IMAGE_EXTENSIONS.has(extname(sourcePath).toLowerCase())) return;
+/**
+ * Render a thumbnail for `sourcePath` under `key`, the sips core shared by
+ * every caller. Returns true only if a thumbnail file was actually written —
+ * false for a non-image extension, a missing `sips`, a non-zero exit, or a
+ * timeout. Never throws.
+ */
+export const renderThumbnail = async (key: string, sourcePath: string): Promise<boolean> => {
+    if (!IMAGE_EXTENSIONS.has(extname(sourcePath).toLowerCase())) return false;
 
     const thumbPath = thumbPathForKey(key);
     // Our own keys are always safe; this only fails on a corrupt history entry.
-    if (thumbPath === null) return;
+    if (thumbPath === null) return false;
 
     await ensurePrivateDir(THUMBS_DIR);
 
@@ -164,7 +170,7 @@ export const createThumbnail = async (key: string, sourcePath: string): Promise<
     } catch (err) {
         // sips missing (e.g. the Linux dev box): Bun.spawn throws synchronously.
         console.error(`spootie: could not run sips for ${key}: ${errorMessage(err)}`);
-        return;
+        return false;
     }
 
     const timeout = setTimeout(() => proc.kill(), SIPS_TIMEOUT_MS);
@@ -178,12 +184,17 @@ export const createThumbnail = async (key: string, sourcePath: string): Promise<
     if (code !== 0) {
         const stderr = await new Response(proc.stderr).text();
         console.error(`spootie: sips thumbnail failed for ${key} (exit ${code}): ${stderr.trim()}`);
-        return;
+        return false;
     }
 
     // Keep the preview private like the rest of state (sips uses the umask).
     await chmod(thumbPath, 0o600).catch(() => {});
-    await markThumbGenerated(key);
+    return true;
+};
+
+/** Render a thumbnail and, on success, record it against the history entry. */
+export const createThumbnail = async (key: string, sourcePath: string): Promise<void> => {
+    if (await renderThumbnail(key, sourcePath)) await markThumbGenerated(key);
 };
 
 /**

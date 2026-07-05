@@ -8,15 +8,15 @@ import {
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONFIG_PATH, readExistingConfig, saveConfig, type Config } from "./config.ts";
+import { CONFIG_PATH, readExistingConfig, saveConfig, type Config } from "../lib/config.ts";
 import {
     errorMessage,
     errorName,
     isAccessDenied,
     isBadCredentials,
     isNoLifecycleConfiguration,
-} from "./errors.ts";
-import { makeClient, uploadFile } from "./upload.ts";
+} from "../lib/errors.ts";
+import { makeClient, uploadFile } from "../lib/upload.ts";
 
 export const LIFECYCLE_RULE_ID = "spootie-expiry";
 

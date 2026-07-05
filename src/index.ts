@@ -1,19 +1,16 @@
 #!/usr/bin/env bun
 import { basename } from "node:path";
-import { loadConfig, type Config } from "./config.ts";
-import { copyToClipboard } from "./clipboard.ts";
-import { confirmUpload, notify, notifyError } from "./notify.ts";
-import { errorMessage, isRetryableNetworkError } from "./errors.ts";
-import { migrateLastUpload, readLastUpload, recordUpload } from "./history.ts";
-import { installAgent, uninstallAgent } from "./launchagent.ts";
-import { UploadQueue } from "./queue.ts";
-import { readUiInfo, startUiServer, uiUrl } from "./server.ts";
-import { runSetup } from "./setup.ts";
-import { isPaused, migrateLegacyState, setPaused } from "./state.ts";
-import { runStatus } from "./status.ts";
-import { generateThumbnail } from "./thumbs.ts";
-import { uploadFile } from "./upload.ts";
-import { getScreenshotFolder, watchScreenshots } from "./watcher.ts";
+import { installAgent, uninstallAgent } from "./commands/launchagent.ts";
+import { runSetup } from "./commands/setup.ts";
+import { runStatus } from "./commands/status.ts";
+import { PendingStore } from "./daemon/pending.ts";
+import { UploadQueue } from "./daemon/queue.ts";
+import { readUiInfo, startUiServer, uiUrl } from "./daemon/server.ts";
+import { getScreenshotFolder, watchScreenshots } from "./daemon/watcher.ts";
+import { loadConfig, type Config } from "./lib/config.ts";
+import { errorMessage } from "./lib/errors.ts";
+import { migrateLastUpload, readLastUpload } from "./lib/history.ts";
+import { isPaused, migrateLegacyState, setPaused } from "./lib/state.ts";
 
 const runWatch = async (): Promise<void> => {
     let config: Config;
@@ -25,9 +22,12 @@ const runWatch = async (): Promise<void> => {
     }
 
     const queue = new UploadQueue(config);
-    await queue.start();
+    const pending = new PendingStore();
+    // Independent disk loads; overlap them rather than reading the two files
+    // back-to-back on startup.
+    await Promise.all([queue.start(), pending.start()]);
 
-    const ui = await startUiServer({ queue, config });
+    const ui = await startUiServer({ queue, pending, config });
 
     const folder = getScreenshotFolder();
     console.log(`spootie: watching for screenshots in ${folder}`);
@@ -38,9 +38,15 @@ const runWatch = async (): Promise<void> => {
     console.log("Press Ctrl+C to stop.");
 
     const handle = watchScreenshots(folder, (path) => {
-        // Catch anything that escapes (e.g. a failed queue persist) so it logs
+        // Catch anything that escapes (e.g. a failed pending persist) so it logs
         // instead of becoming an unhandled rejection.
-        handleScreenshot(path, config, queue).catch((err: unknown) => {
+        (async () => {
+            if (await isPaused()) {
+                console.log(`spootie: paused — ignoring ${basename(path)}`);
+                return;
+            }
+            await pending.add(path);
+        })().catch((err: unknown) => {
             console.error(`spootie: screenshot handling failed: ${errorMessage(err)}`);
         });
     });
@@ -52,50 +58,6 @@ const runWatch = async (): Promise<void> => {
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
-};
-
-const handleScreenshot = async (
-    path: string,
-    config: Config,
-    queue: UploadQueue,
-): Promise<void> => {
-    const name = basename(path);
-
-    if (await isPaused()) {
-        console.log(`spootie: paused — ignoring ${name}`);
-        return;
-    }
-
-    try {
-        const wantsUpload = await confirmUpload(name);
-        if (!wantsUpload) return;
-    } catch (err) {
-        console.error(`Notification failed for ${name}: ${errorMessage(err)}`);
-        return;
-    }
-
-    try {
-        const { url, key } = await uploadFile(path, config);
-        await copyToClipboard(url);
-        await recordUpload({
-            key,
-            url,
-            fileName: name,
-            uploadedAt: new Date().toISOString(),
-        });
-        // Local-only preview; fire-and-forget so it never delays the response.
-        generateThumbnail(key, path);
-        notify(url, "Uploaded — URL copied");
-        console.log(`Uploaded ${name} -> ${url}`);
-    } catch (err) {
-        if (isRetryableNetworkError(err)) {
-            console.error(`Upload failed for ${name} (network): ${errorMessage(err)}`);
-            await queue.enqueue(path);
-            return;
-        }
-        console.error(`Upload failed for ${name}: ${errorMessage(err)}`);
-        notifyError(`Upload failed for ${name}`);
-    }
 };
 
 const runLast = async (): Promise<void> => {

@@ -1,12 +1,22 @@
 import { mkdir, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { isCompiledBinary } from "./runtime.ts";
-import { ensurePrivateDir } from "./state.ts";
+import { ensurePrivateDir } from "../lib/state.ts";
 
 const LABEL = "com.spootie.watch";
 export const PLIST_PATH = join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
 export const LOG_PATH = join(homedir(), ".config", "spootie", "logs", "spootie.log");
+
+/**
+ * True when running as a `bun build --compile` binary rather than via `bun
+ * run`/`bunx`. A compiled binary always embeds at least one asset (see
+ * daemon/assets.ts) via `with { type: "file" }` imports, which populates
+ * `Bun.embeddedFiles`; a plain `bun run` process never does, since those
+ * imports just resolve to real paths on disk. More reliable than sniffing
+ * `process.execPath`'s basename, which would misfire if someone named the
+ * compiled binary "bun".
+ */
+const isCompiledBinary = (): boolean => Bun.embeddedFiles.length > 0;
 
 /**
  * Arguments launchd should exec. When an explicit `binaryPath` is given (e.g.
@@ -16,13 +26,13 @@ export const LOG_PATH = join(homedir(), ".config", "spootie", "logs", "spootie.l
  * launchd at it (no bun, no source tree needed at runtime); in dev
  * (`bun run src/index.ts install`), process.execPath is the `bun` interpreter,
  * so we keep the old bun+entry-script form. isCompiledBinary() tells the two
- * apart (see runtime.ts).
+ * apart.
  */
 const programArguments = (binaryPath?: string): string[] => {
     if (binaryPath !== undefined) return [binaryPath, "watch"];
     return isCompiledBinary()
         ? [process.execPath, "watch"]
-        : [process.execPath, "run", join(import.meta.dir, "index.ts"), "watch"];
+        : [process.execPath, "run", join(import.meta.dir, "..", "index.ts"), "watch"];
 };
 
 /** Escapes a string for safe embedding in plist XML text content. */
@@ -32,9 +42,7 @@ const escapeXml = (value: string): string =>
 const plistContent = (binaryPath?: string): string => {
     // LaunchAgents run without the user's shell PATH, so everything must be
     // absolute; pbcopy/osascript/mdls/defaults live in /usr/bin, so the PATH
-    // below still matters even though alerter itself is invoked by absolute
-    // path (extracted from the embedded asset, see notify.ts) and no longer
-    // needs to be found on it.
+    // below still matters for those.
     const agentPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
     const argsXml = programArguments(binaryPath)
         .map((arg) => `    <string>${escapeXml(arg)}</string>`)

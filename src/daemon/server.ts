@@ -2,31 +2,34 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, unlinkSync } from "node:fs";
 import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { copyToClipboard } from "./clipboard.ts";
-import type { Config } from "./config.ts";
-import {
-    DASHBOARD_HTML_ASSET,
-    FAVICON_SVG_ASSET,
-    PREACT_STANDALONE_ASSET,
-} from "./embedded-assets.ts";
-import { errorMessage, errorStatus } from "./errors.ts";
+import { copyUrlBestEffort } from "../lib/clipboard.ts";
+import type { Config } from "../lib/config.ts";
+import { DASHBOARD_HTML_ASSET, FAVICON_SVG_ASSET, PREACT_STANDALONE_ASSET } from "./assets.ts";
+import { errorMessage, errorStatus, isRetryableNetworkError } from "../lib/errors.ts";
 import {
     readHistory,
     readLastUpload,
     recordUpload,
     removeFromHistory,
     removeManyFromHistory,
-} from "./history.ts";
+} from "../lib/history.ts";
+import type { PendingStore } from "./pending.ts";
 import type { UploadQueue } from "./queue.ts";
-import { DATA_DIR, ensurePrivateDir, isPaused, setPaused } from "./state.ts";
-import { deleteThumbnail, generateThumbnailFromBytes, thumbPathForKey } from "./thumbs.ts";
+import { DATA_DIR, ensurePrivateDir, isPaused, setPaused } from "../lib/state.ts";
+import {
+    deleteThumbnail,
+    generateThumbnail,
+    generateThumbnailFromBytes,
+    thumbPathForKey,
+} from "./thumbs.ts";
 import {
     contentDispositionAttachment,
     deleteObject,
     deleteObjects,
     generateKey,
     uploadBytes,
-} from "./upload.ts";
+    uploadFile,
+} from "../lib/upload.ts";
 
 /**
  * Largest multipart body the dashboard upload route accepts (512 MB), set as
@@ -57,16 +60,24 @@ export interface UiInfo {
 
 /**
  * A single dashboard item. Uploaded items come from the history file; queued
- * items come from the live UploadQueue. The UI codes against this shape.
+ * items come from the live UploadQueue; pending items come from the live
+ * PendingStore (detected screenshots awaiting approve/discard). The UI codes
+ * against this shape.
  */
 export interface UiItem {
-    /** History key (uploaded) or queue entry id (queued) — stable per kind. */
+    /**
+     * History key (uploaded), queue entry id (queued), or pending entry id
+     * (pending) — stable per kind.
+     */
     id: string;
-    kind: "uploaded" | "queued";
+    kind: "uploaded" | "queued" | "pending";
     fileName: string;
-    /** ISO 8601 timestamp: uploadedAt (uploaded) or queuedAt (queued). */
+    /**
+     * ISO 8601 timestamp: uploadedAt (uploaded), queuedAt (queued), or
+     * detectedAt (pending).
+     */
     date: string;
-    /** Public share URL for uploaded items; null while queued. */
+    /** Public share URL for uploaded items; null while queued or pending. */
     url: string | null;
     /**
      * True if a local thumbnail exists for this item (served by /api/thumb).
@@ -78,7 +89,7 @@ export interface UiItem {
 /**
  * Only these exact paths are served as static files — there is no generic
  * filesystem serving, so no path-traversal surface. `path` is the resolved
- * embedded-asset path (see embedded-assets.ts): a real file under `bun run`,
+ * embedded-asset path (see assets.ts): a real file under `bun run`,
  * or a $bunfs path in the compiled binary — Bun.file() reads both the same
  * way, so no dev/compiled branch is needed here.
  */
@@ -104,6 +115,23 @@ const json = (data: unknown, status = 200): Response =>
     });
 
 /**
+ * Parse a JSON request body and pull a string `id` out of it. Returns the id on
+ * success, or a ready-to-return 400 Response if the body is unparseable or lacks
+ * a string `id`. Shared by the pending approve/discard endpoints.
+ */
+const readIdBody = async (req: Request): Promise<string | Response> => {
+    let body: unknown;
+    try {
+        body = await req.json();
+    } catch {
+        return json({ error: "Invalid JSON body" }, 400);
+    }
+    const { id } = (body ?? {}) as { id?: unknown };
+    if (typeof id !== "string") return json({ error: "Expected { id: string }" }, 400);
+    return id;
+};
+
+/**
  * Reject any request whose Host header is not our own loopback address. This is
  * the standard DNS-rebinding defence: binding to 127.0.0.1 does not stop a
  * malicious page that has rebound its domain to 127.0.0.1, but such a request
@@ -122,8 +150,8 @@ const isAllowedOrigin = (origin: string | null, port: number): boolean =>
     origin === `http://127.0.0.1:${port}` ||
     origin === `http://localhost:${port}`;
 
-/** Merge history + live queue into one newest-first list of dashboard items. */
-const buildItems = async (queue: UploadQueue): Promise<UiItem[]> => {
+/** Merge history + live queue + live pending into one newest-first list. */
+const buildItems = async (queue: UploadQueue, pending: PendingStore): Promise<UiItem[]> => {
     const uploaded: UiItem[] = (await readHistory()).map((e) => ({
         id: e.key,
         kind: "uploaded",
@@ -142,7 +170,18 @@ const buildItems = async (queue: UploadQueue): Promise<UiItem[]> => {
         thumb: false,
     }));
 
-    return [...uploaded, ...queued].toSorted((a, b) => b.date.localeCompare(a.date));
+    const pendingItems: UiItem[] = pending.list().map((e) => ({
+        id: e.id,
+        kind: "pending",
+        fileName: e.fileName,
+        date: e.detectedAt,
+        url: null,
+        thumb: e.thumb === true,
+    }));
+
+    return [...uploaded, ...queued, ...pendingItems].toSorted((a, b) =>
+        b.date.localeCompare(a.date),
+    );
 };
 
 const handleDelete = async (
@@ -346,16 +385,80 @@ const handleUpload = async (req: Request, config: Config): Promise<Response> => 
         fileName,
         uploadedAt: new Date().toISOString(),
     });
-    // Best-effort clipboard copy — already failure-tolerant, but keep a stray
-    // pbcopy failure (e.g. no clipboard) from turning a good upload into a 502.
-    await copyToClipboard(url).catch((err: unknown) => {
-        console.error(`spootie: could not copy uploaded URL to clipboard: ${errorMessage(err)}`);
-    });
+    // Best-effort clipboard copy — keep a stray pbcopy failure (e.g. no
+    // clipboard) from turning a good upload into a 502.
+    await copyUrlBestEffort(url);
     // Local-only preview; detached so it never delays the response, and it owns
     // its temp file's lifecycle (write -> thumb -> unlink) internally.
     generateThumbnailFromBytes(key, fileName, bytes);
 
     return json({ ok: true, url, key });
+};
+
+/**
+ * Approve a pending screenshot: upload it to R2 and move it into history. The
+ * pending entry's local thumbnail (rendered while it sat pending) already
+ * lives under its id, so a fresh upload thumbnail is generated under the new
+ * R2 key rather than reused.
+ *
+ *  - success            -> 200 { ok: true, url, key }; entry leaves pending.
+ *  - network error      -> 200 { ok: true, queued: true }; entry moves into
+ *                          the retry queue and leaves pending.
+ *  - file gone on disk  -> 404 { error }; entry removed from pending.
+ *  - too large          -> 413 { error }; entry kept in pending.
+ *  - other upload error -> 502 { error }; entry kept in pending.
+ *  - unknown id         -> 404 { error }.
+ */
+const handleApprove = async (
+    req: Request,
+    queue: UploadQueue,
+    pending: PendingStore,
+    config: Config,
+): Promise<Response> => {
+    const id = await readIdBody(req);
+    if (id instanceof Response) return id;
+
+    const entry = pending.get(id);
+    if (entry === undefined) return json({ error: "No such pending item" }, 404);
+
+    if (!(await Bun.file(entry.filePath).exists())) {
+        await pending.discard(id);
+        return json({ error: "That screenshot is no longer on disk." }, 404);
+    }
+
+    try {
+        const { url, key } = await uploadFile(entry.filePath, config);
+        await recordUpload({
+            key,
+            url,
+            fileName: entry.fileName,
+            uploadedAt: new Date().toISOString(),
+        });
+        // Local-only preview; fire-and-forget so it never delays the response.
+        generateThumbnail(key, entry.filePath);
+        // Best-effort clipboard copy — never fail the request over it.
+        await copyUrlBestEffort(url);
+        await pending.discard(id);
+        return json({ ok: true, url, key });
+    } catch (err) {
+        if (isRetryableNetworkError(err)) {
+            await queue.enqueue(entry.filePath);
+            await pending.discard(id);
+            return json({ ok: true, queued: true });
+        }
+        const status = errorStatus(err) === 413 ? 413 : 502;
+        return json({ error: `Could not upload to R2: ${errorMessage(err)}` }, status);
+    }
+};
+
+/** Discard a pending screenshot without uploading it. */
+const handleDiscard = async (req: Request, pending: PendingStore): Promise<Response> => {
+    const id = await readIdBody(req);
+    if (id instanceof Response) return id;
+
+    const discarded = await pending.discard(id);
+    if (!discarded) return json({ error: "No such pending item" }, 404);
+    return json({ ok: true });
 };
 
 /**
@@ -413,9 +516,11 @@ export class AlreadyRunningError extends Error {
  */
 export const startUiServer = async ({
     queue,
+    pending,
     config,
 }: {
     queue: UploadQueue;
+    pending: PendingStore;
     config: Config;
 }): Promise<{ port: number; token: string; stop: () => void }> => {
     const existing = await readUiInfo();
@@ -455,7 +560,7 @@ export const startUiServer = async ({
 
             if (pathname === "/api/items" && req.method === "GET") {
                 if (!authed) return new Response("Forbidden", { status: 403 });
-                return json({ items: await buildItems(queue) });
+                return json({ items: await buildItems(queue, pending) });
             }
             if (pathname === "/api/thumb" && req.method === "GET") {
                 if (!authed) return new Response("Forbidden", { status: 403 });
@@ -495,6 +600,18 @@ export const startUiServer = async ({
                     return new Response("Forbidden", { status: 403 });
                 }
                 return handleUpload(req, config);
+            }
+            if (pathname === "/api/approve" && req.method === "POST") {
+                if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+                    return new Response("Forbidden", { status: 403 });
+                }
+                return handleApprove(req, queue, pending, config);
+            }
+            if (pathname === "/api/discard" && req.method === "POST") {
+                if (!authed || !isAllowedOrigin(req.headers.get("origin"), boundPort)) {
+                    return new Response("Forbidden", { status: 403 });
+                }
+                return handleDiscard(req, pending);
             }
             if (req.method === "GET") {
                 // Static pages carry no secrets; the dashboard reads its token from the

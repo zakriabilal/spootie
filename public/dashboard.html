@@ -1,388 +1,335 @@
 <title>Spootie</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <style>
-    :root {
-        color-scheme: dark;
-        --bg: #0a0a0c;
-        --bg-elev: #0e0e11;
-        --fg: #e7e7ea;
-        --muted: #71717a;
-        --faint: #52525b;
-        --border: rgba(255, 255, 255, 0.07);
-        --border-strong: rgba(255, 255, 255, 0.12);
-        --hover: rgba(255, 255, 255, 0.028);
-        --accent: #7dd992;
-        --queued: #d9a95e;
-        --danger: #e07070;
-        --bar-h: 53px;
-        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Code", monospace;
-        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    }
+  :root{
+    --bg: #f2f3f6;
+    --bg-soft: #e8eaef;
+    --surface: #ffffff;
+    --ink: #14171c;
+    --ink-soft: #5b616e;
+    --ink-faint: #9297a3;
+    --line: #e1e3e9;
+    --line-soft: #ececf0;
+    --accent: #7dd992;
+    --accent-deep: #2c7a45;
+    --accent-wash: #e6f7eb;
+    --queued: #b5852f;
+    --queued-wash: #fbf1e0;
+    --danger: #c1373d;
+    --radius: 8px;
+    --gap: 10px;
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
 
-    * { box-sizing: border-box; }
+  *{ box-sizing: border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  ::selection{ background: var(--accent); color:#0d1a12; }
 
-    html, body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--fg);
-    }
+  :focus{ outline: none; }
+  :focus-visible{
+    outline: 2px solid var(--accent-deep);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
 
-    body {
-        font-family: var(--sans);
-        font-size: 14px;
-        line-height: 1.5;
-        -webkit-font-smoothing: antialiased;
-        min-height: 100vh;
-    }
+  button, input{ font-family: inherit; font-size: inherit; color: inherit; }
+  button{ cursor:pointer; background:none; border:none; }
 
-    ::selection { background: rgba(125, 217, 146, 0.22); }
+  .app{
+    display: grid;
+    grid-template-columns: 224px minmax(0, 1fr);
+    min-height: 100vh;
+  }
 
-    #app { max-width: 680px; margin: 0 auto; }
+  /* ---------- SIDEBAR ---------- */
+  .rail{
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    padding: 18px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  .brand{ display:flex; align-items:center; gap:9px; padding: 0 2px; }
+  .brand-mark{ flex: none; display:flex; position: relative; }
+  .status-dot{
+    position:absolute;
+    right: -2px; bottom: -2px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--surface);
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  .status-dot.off{ background: var(--queued); animation-duration: 1.2s; }
+  @keyframes pulse{ 0%,100%{ opacity: 1; } 50%{ opacity: .5; } }
+  .brand-word{ font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
 
-    /* ---- top bar ---- */
-    .bar {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        height: var(--bar-h);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 20px;
-        background: color-mix(in srgb, var(--bg) 82%, transparent);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-bottom: 1px solid var(--border);
-    }
-    .wordmark {
-        font-family: var(--sans);
-        font-weight: 600;
-        font-size: 15px;
-        letter-spacing: -0.01em;
-        color: var(--fg);
-        display: flex;
-        align-items: baseline;
-        gap: 7px;
-    }
-    .wordmark .prompt {
-        font-family: var(--mono);
-        color: var(--faint);
-        font-weight: 400;
-        font-size: 13px;
-    }
-    .conn {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        letter-spacing: 0.02em;
-        color: var(--muted);
-        text-transform: lowercase;
-    }
-    .dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        flex: none;
-        background: var(--faint);
-    }
-    .dot.live { background: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
-    .dot.off  { background: var(--queued); animation: pulse 1.2s ease-in-out infinite; }
+  .rail-upload{
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    width:100%;
+    padding: 9px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background .13s, border-color .13s;
+  }
+  .rail-upload:hover{ background:#000; border-color:#000; }
+  .rail-upload svg{ flex:none; }
 
-    /* ---- drop zone (upload any file) ---- */
-    .dropzone {
-        margin: 18px 20px 6px;
-        padding: 26px 20px;
-        border: 1.5px dashed var(--border-strong);
-        border-radius: 10px;
-        background: var(--bg-elev);
-        text-align: center;
-        cursor: pointer;
-        user-select: none;
-        transition: border-color 0.14s ease, background 0.14s ease;
-    }
-    .dropzone:hover { border-color: rgba(255, 255, 255, 0.2); }
-    .dropzone:focus-visible {
-        outline: none;
-        border-color: var(--border-strong);
-    }
-    .dropzone.drag {
-        border-color: var(--accent);
-        background: rgba(125, 217, 146, 0.06);
-    }
-    .dropzone.err { border-color: rgba(224, 112, 112, 0.5); }
-    .dz-title {
-        font-family: var(--mono);
-        font-size: 13px;
-        color: var(--fg);
-        margin-bottom: 4px;
-    }
-    .dropzone.drag .dz-title { color: var(--accent); }
-    .dropzone.done .dz-title { color: var(--accent); }
-    .dropzone.err .dz-title { color: var(--danger); }
-    .dz-hint {
-        font-family: var(--mono);
-        font-size: 11px;
-        color: var(--faint);
-    }
+  .nav{ display:flex; flex-direction:column; gap: 1px; }
+  .nav-item{
+    display:flex; align-items:center; gap: 9px;
+    padding: 7px 9px;
+    border-radius: var(--radius);
+    color: var(--ink-soft);
+    font-weight: 500;
+    font-size: 13px;
+    border: none;
+    width: 100%;
+    text-align: left;
+  }
+  .nav-item svg{ flex:none; opacity:.7; }
+  .nav-item:hover{ background: var(--bg-soft); color: var(--ink); }
+  .nav-item.is-active{ background: var(--bg-soft); color: var(--ink); font-weight: 700; }
+  .nav-item.is-active svg{ opacity: 1; color: var(--accent-deep); }
+  .nav-count{
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 20px;
+    background: var(--bg-soft);
+    color: var(--ink-soft);
+  }
+  .nav-item.is-active .nav-count{ background: #fff; }
 
-    /* ---- selection toolbar (between drop zone and list) ---- */
-    .toolbar {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 38px;
-        padding: 7px 20px;
-        border-bottom: 1px solid var(--border);
-        background: var(--bg-elev);
-        font-family: var(--mono);
-    }
-    .toolbar .spacer { flex: 1 1 auto; }
-    .tb-count {
-        font-size: 11px;
-        letter-spacing: 0.04em;
-        color: var(--muted);
-        white-space: nowrap;
-    }
-    .tb-status {
-        font-size: 11px;
-        letter-spacing: 0.02em;
-        color: var(--muted);
-        white-space: nowrap;
-    }
-    .tb-status.err { color: var(--danger); }
-    .tb-confirm {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .tb-confirm-q {
-        font-size: 11px;
-        color: var(--danger);
-        white-space: nowrap;
-    }
+  .rail-spacer{ flex: 1; }
 
-    /* ---- per-row selection checkbox ---- */
-    .checkbox {
-        width: 16px;
-        height: 16px;
-        flex: none;
-        border-radius: 4px;
-        border: 1px solid var(--border-strong);
-        background: var(--bg-elev);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: var(--mono);
-        font-size: 11px;
-        line-height: 1;
-        color: var(--bg);
-    }
-    .checkbox.on { background: var(--accent); border-color: var(--accent); }
-    .row.selectable { cursor: pointer; user-select: none; }
-    .row.selected { background: rgba(125, 217, 146, 0.06); }
-    .row.selectable:focus-visible {
-        outline: 1px solid var(--border-strong);
-        outline-offset: -1px;
-    }
+  .rail-foot{
+    border-top: 1px solid var(--line-soft);
+    padding-top: 12px;
+    display:flex; flex-direction:column; gap: 3px;
+  }
+  .rail-foot p{ margin: 0; font-size: 12px; color: var(--ink-faint); font-weight: 500; }
+  .rail-foot p.stat{ color: var(--ink-soft); font-weight: 600; }
 
-    /* ---- offline banner ---- */
-    .banner {
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--queued);
-        padding: 9px 20px;
-        border-bottom: 1px solid var(--border);
-        background: rgba(217, 169, 94, 0.05);
-    }
+  /* ---------- MAIN ---------- */
+  .main{ min-width: 0; position: relative; overflow-x: hidden; }
 
-    /* ---- date group headers ---- */
-    .group-head {
-        position: sticky;
-        top: var(--bar-h);
-        z-index: 10;
-        padding: 16px 20px 7px;
-        font-family: var(--mono);
-        font-size: 10.5px;
-        font-weight: 500;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--faint);
-        background: color-mix(in srgb, var(--bg) 88%, transparent);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-    }
+  .toolbar{
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    padding: 16px 28px;
+    display:flex; align-items: baseline; gap: 12px;
+  }
+  .page-title{ font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .page-sub{
+    font-size: 13px; color: var(--ink-faint); font-weight: 500;
+    text-decoration: none;
+    border: none; background: none; padding: 0;
+  }
+  .page-sub:hover{ color: var(--accent-deep); }
 
-    /* ---- rows ---- */
-    .row {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        padding: 10px 20px;
-        border-bottom: 1px solid var(--border);
-        animation: rowIn 0.24s ease both;
-    }
-    .row:hover { background: var(--hover); }
+  .content{ padding: 22px 28px 64px; max-width: 1180px; }
 
-    .row .status-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        flex: none;
-        background: var(--accent);
-    }
-    .row.queued .status-dot { background: var(--queued); animation: pulse 1.4s ease-in-out infinite; }
+  /* banners: offline/reauth states, restyled from the mockup's neutral palette */
+  .banner{
+    margin: 0 0 16px;
+    padding: 9px 14px;
+    border-radius: var(--radius);
+    border: 1px solid color-mix(in srgb, var(--queued) 35%, var(--line));
+    background: var(--queued-wash);
+    color: var(--queued);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .banner.err{
+    border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+    background: color-mix(in srgb, var(--danger) 8%, #fff);
+    color: var(--danger);
+  }
 
-    /* ---- thumbnail (local sips preview) / placeholder ---- */
-    .thumb, .thumb-ph {
-        width: 48px;
-        height: 48px;
-        flex: none;
-        border-radius: 6px;
-        border: 1px solid var(--border);
-        background: var(--bg-elev);
-    }
-    .thumb { object-fit: cover; display: block; }
-    .thumb-ph {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: var(--mono);
-        font-size: 16px;
-        color: var(--faint);
-    }
+  .date-heading{
+    display:flex; align-items:center; gap: 12px;
+    margin: 28px 0 12px;
+    font-size: 12px; font-weight: 700; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .date-heading:first-child{ margin-top: 2px; }
+  .date-heading::after{ content:""; height:1px; flex:1; background: var(--line); }
 
-    .meta {
-        min-width: 0;
-        flex: 1 1 auto;
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
-        font-family: var(--mono);
-    }
-    .name {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 13px;
-        color: var(--fg);
-    }
-    .sep { color: var(--border-strong); flex: none; }
-    .time { flex: none; font-size: 12px; color: var(--muted); }
-    .qlabel {
-        flex: none;
-        font-size: 11px;
-        color: var(--queued);
-        letter-spacing: 0.02em;
-    }
-    .qlabel .dots::after {
-        content: "";
-        animation: ellipsis 1.6s steps(4, end) infinite;
-    }
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: var(--gap);
+  }
 
-    /* ---- actions ---- */
-    .actions {
-        flex: none;
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        opacity: 0.55;
-        transition: opacity 0.12s ease;
-    }
-    .row:hover .actions,
-    .row:focus-within .actions { opacity: 1; }
+  /* ---------- TILE ---------- */
+  .tile{
+    position: relative;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: var(--radius);
+    background: #eef0f4;
+    isolation: isolate;
+  }
+  .tile .shot{ position:absolute; inset:0; width:100%; height:100%; display:block; z-index:0; object-fit:cover; object-position:center; }
 
-    .btn {
-        font-family: var(--mono);
-        font-size: 10.5px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--muted);
-        background: none;
-        border: 1px solid transparent;
-        border-radius: 5px;
-        padding: 4px 8px;
-        cursor: pointer;
-        transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-        white-space: nowrap;
-    }
-    .btn:hover { color: var(--fg); background: rgba(255, 255, 255, 0.04); }
-    .btn:focus-visible {
-        outline: none;
-        border-color: var(--border-strong);
-        color: var(--fg);
-    }
-    .btn.copied { color: var(--accent); }
-    .btn.danger { color: var(--danger); }
-    .btn.armed { color: var(--danger); border-color: rgba(224, 112, 112, 0.4); background: rgba(224, 112, 112, 0.08); }
-    .btn:disabled { opacity: 0.5; cursor: default; }
+  .tile-ph{
+    position:absolute; inset:0; z-index:0;
+    display:flex; align-items:center; justify-content:center;
+    color: var(--ink-faint);
+  }
 
-    .row-err {
-        padding: 0 20px 9px 38px;
-        font-family: var(--mono);
-        font-size: 11.5px;
-        color: var(--danger);
-    }
+  /* pending at-rest marker: 2px brand ring */
+  .tile.is-pending .ring{
+    position:absolute; inset:0;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    box-shadow: inset 0 0 0 1px rgba(20,23,28,.06);
+    z-index: 2;
+    pointer-events: none;
+  }
+  /* queued at-rest marker: tiny spinner in corner */
+  .tile .queued-mark{
+    position:absolute; top: 8px; left: 8px; z-index: 2;
+    width: 18px; height:18px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius: 50%;
+    background: rgba(10,12,16,.55);
+    backdrop-filter: blur(3px);
+  }
+  .tile .queued-mark .spin{
+    width: 10px; height:10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,.35);
+    border-top-color: #fff;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
 
-    /* ---- empty / loading ---- */
-    .placeholder {
-        text-align: center;
-        padding: 90px 20px;
-        color: var(--muted);
-    }
-    .placeholder .glyph {
-        font-family: var(--mono);
-        font-size: 22px;
-        color: var(--faint);
-        margin-bottom: 12px;
-    }
-    .placeholder h2 {
-        margin: 0 0 6px;
-        font-size: 15px;
-        font-weight: 600;
-        color: var(--fg);
-    }
-    .placeholder p { margin: 0; font-size: 13px; color: var(--muted); }
+  /* hover scrim — also shown on keyboard focus-within so actions are reachable
+     without a mouse */
+  .tile::after{
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(0deg, rgba(10,12,16,.82) 0%, rgba(10,12,16,.32) 44%, transparent 68%);
+    opacity: 0;
+    transition: opacity .14s ease;
+    z-index: 3;
+  }
+  .tile:hover::after, .tile:focus-within::after{ opacity: 1; }
 
-    .foot {
-        padding: 22px 20px 40px;
-        font-family: var(--mono);
-        font-size: 11px;
-        color: var(--faint);
-        text-align: center;
-    }
+  .tile-info{
+    position:absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+    padding: 10px;
+    display:flex; flex-direction:column; gap: 8px;
+    opacity: 0;
+    transform: translateY(3px);
+    transition: opacity .14s ease, transform .14s ease;
+  }
+  .tile:hover .tile-info, .tile:focus-within .tile-info{ opacity: 1; transform: translateY(0); }
 
-    /* ---- persistent brand/status line ---- */
-    .brandbar {
-        padding: 14px 20px 34px;
-        font-family: var(--mono);
-        font-size: 10.5px;
-        letter-spacing: 0.02em;
-        color: var(--faint);
-        text-align: center;
-    }
+  .tile-name{
+    font-size: 12px; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow:hidden; text-overflow: ellipsis;
+  }
+  .tile-time{ font-size: 11px; color: rgba(255,255,255,.65); font-weight: 500; }
+  .tile-time.err{ color: #ffb4b4; }
+  .tile-meta{ display:flex; justify-content:space-between; align-items:center; gap: 8px; min-width:0; }
 
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.32; } }
-    @keyframes rowIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
-    @keyframes ellipsis { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  .tile-actions{ display:flex; gap: 6px; }
+  .ibtn{
+    flex: none;
+    width: 28px; height: 28px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius: 7px;
+    border: none;
+    background: rgba(255,255,255,.18);
+    color: #fff;
+    transition: background .12s;
+  }
+  .ibtn:hover{ background: rgba(255,255,255,.30); }
+  .ibtn:focus-visible{ outline: 2px solid #fff; outline-offset: 2px; }
+  .ibtn.approve{ background: var(--accent-deep); }
+  .ibtn.approve:hover{ background: #256a3b; }
+  .ibtn.discard:hover{ background: var(--danger); }
+  .ibtn.is-copied{ background: var(--accent-deep); }
+  .ibtn svg{ flex:none; }
+  .ibtn:disabled{ opacity: .5; cursor: default; }
 
-    @media (prefers-reduced-motion: reduce) {
-        .row { animation: none; }
-        .dot, .status-dot, .qlabel .dots::after { animation: none !important; }
-    }
+  /* ---------- empty state ---------- */
+  .empty{
+    padding: 90px 20px;
+    text-align: center;
+    color: var(--ink-faint);
+  }
+  .empty svg{ color: var(--ink-faint); margin-bottom: 12px; }
+  .empty p{ margin: 0; font-size: 14px; font-weight: 500; color: var(--ink-soft); }
 
-    @media (max-width: 520px) {
-        .group-head { padding-left: 16px; padding-right: 16px; }
-        .row { padding-left: 16px; padding-right: 16px; }
-        .bar { padding: 0 16px; }
-        .actions { opacity: 1; }
-        .dropzone { margin-left: 16px; margin-right: 16px; }
+  /* ---------- drag overlay ---------- */
+  .drop-overlay{
+    position: fixed; inset: 12px; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 16px;
+    border: 2px dashed var(--accent-deep);
+    background: color-mix(in srgb, var(--accent-wash) 92%, transparent);
+    opacity: 0; pointer-events: none;
+    transition: opacity .12s ease;
+  }
+  .main.is-dragging .drop-overlay{ opacity: 1; pointer-events: auto; }
+  .drop-overlay-label{
+    display:flex; flex-direction:column; align-items:center; gap: 8px;
+    color: var(--accent-deep); font-weight: 700; font-size: 14px;
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 860px){
+    .app{ grid-template-columns: 1fr; }
+    .rail{
+      position: sticky; top:0; height:auto;
+      flex-direction:row; align-items:center;
+      padding: 10px 14px; gap: 12px;
+      overflow-x:auto; z-index: 6;
+      border-right:none; border-bottom: 1px solid var(--line);
     }
+    .rail-spacer{ display:none; }
+    .rail-upload{ width:auto; white-space:nowrap; }
+    .nav{ flex-direction:row; }
+    .nav-item{ white-space:nowrap; }
+    .rail-foot{ display:none; }
+    .toolbar{ padding: 14px 16px; }
+    .content{ padding: 18px 16px 48px; }
+  }
+  @media (max-width: 480px){
+    .grid{ grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation: none !important; transition: none !important; }
+  }
 </style>
 
-<div id="app"></div>
+<div class="app" id="app"></div>
 
 <script type="module">
     import {
@@ -402,9 +349,6 @@
             return fromUrl || "";
         }
     })();
-
-    // Port the dashboard is served on, read from the URL for the status line.
-    const PORT = location.port || "?";
 
     const withToken = (path) =>
         path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN);
@@ -435,271 +379,156 @@
         return dt.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
     };
 
-    /** 24-hour HH:MM:SS, matching the tool's terminal-metadata feel. */
+    /** 24-hour HH:MM for a tile's timestamp. */
     const fmtTime = (iso) => {
         const dt = new Date(iso);
-        if (Number.isNaN(dt.getTime())) return "--:--:--";
-        return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+        if (Number.isNaN(dt.getTime())) return "--:--";
+        return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     };
 
-    const deleteItem = async (kind, id) => {
-        const res = await fetch(withToken("/api/delete"), {
+    /**
+     * POST a JSON body to an /api mutation and throw the server's error message
+     * (falling back to `fallbackMsg`) on any non-2xx response.
+     */
+    const postAction = async (path, body, fallbackMsg) => {
+        const res = await fetch(withToken(path), {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ kind, id }),
+            body: JSON.stringify(body),
         });
         if (!res.ok) {
-            let msg = "Delete failed";
+            let msg = fallbackMsg;
             try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
             throw new Error(msg);
         }
     };
 
-    /**
-     * Delete several items in one request (multi-select and "Empty all" both use
-     * this; Empty all just passes every id). The server replies { ok, deleted,
-     * failed } with 200 (all gone), 207 (partial), or 502 (all failed). fetch's
-     * res.ok covers 200/207, so a partial success returns normally and the caller
-     * surfaces failed.length; only a 502/parse failure throws. Returns the parsed
-     * body so the caller can prune the confirmed-deleted ids optimistically.
-     */
-    const deleteBatch = async (ids) => {
-        const res = await fetch(withToken("/api/delete-batch"), {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ keys: ids }),
-        });
-        let data = null;
-        try { data = await res.json(); } catch (_) {}
-        if (!data || !Array.isArray(data.deleted) || !Array.isArray(data.failed)) {
-            // 403 (plain text), 400 ({error}), or an unparseable body.
-            throw new Error((data && data.error) || "Delete failed");
-        }
-        if (!res.ok && data.deleted.length === 0) {
-            // 502: everything failed. Nothing was removed server-side.
-            throw new Error(data.failed.length + " item" + (data.failed.length === 1 ? "" : "s") + " failed");
-        }
-        return data;
+    const deleteItem = (kind, id) => postAction("/api/delete", { kind, id }, "Delete failed");
+    /** Approve a pending screenshot: uploads it to R2 (or queues it on a network error). */
+    const approveItem = (id) => postAction("/api/approve", { id }, "Approve failed");
+    /** Discard a pending screenshot without uploading it. */
+    const discardItem = (id) => postAction("/api/discard", { id }, "Discard failed");
+
+    /** Inline Lucide-style icon set, kept minimal and local (no icon font/CDN). */
+    const Icon = {
+        upload: html`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19V6M6 12l6-6 6 6"/><path d="M5 20h14"/></svg>`,
+        grid: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
+        clock: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+        uploaded: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v6H4z"/><path d="M4 14h10v6H4z"/><path d="M17 14v6M20 17h-6"/></svg>`,
+        queued: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>`,
+        check: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+        x: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
+        copy: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+        trash: html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+        file: html`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`,
+        dropArrow: html`<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`,
     };
 
-    /** "3 items failed" / "" — the trailing status a batch delete leaves behind. */
-    const failSummary = (failed) =>
-        failed && failed.length
-            ? failed.length + " item" + (failed.length === 1 ? "" : "s") + " failed"
-            : "";
+    /** The Spootie mark: a rounded square with a green corner-bracket glyph. */
+    const BrandMark = html`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="26" height="26">
+            <rect x="1" y="1" width="30" height="30" rx="7.5" fill="#111317"/>
+            <g fill="none" stroke="#7dd992" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 13V9h4"/><path d="M19 9h4v4"/><path d="M23 19v4h-4"/><path d="M13 23H9v-4"/>
+            </g>
+            <circle cx="16" cy="16" r="1.7" fill="#7dd992"/>
+        </svg>`;
 
     /**
-     * A destructive control that arms before it fires — no window.confirm. Idle
-     * shows `label`; clicking arms it into a red "Really delete N items? Yes / No"
-     * that disarms on No or after ~5s. Yes runs `onConfirm` (async), showing
-     * "Deleting…" and then any summary string it returns (e.g. partial failures)
-     * or the thrown error, briefly, before returning to idle. Used for both
-     * "Delete selected" and the quieter "Empty all".
+     * One drop in the grid. Its actions depend on kind: uploaded gets
+     * Copy/Delete, pending gets Approve/Discard, queued gets Cancel. All
+     * mutations are optimistic — the row disappears immediately and the next
+     * 2s poll reconciles with the server.
      */
-    function ConfirmAction({ label, count, disabled, quiet, onConfirm }) {
-        const [phase, setPhase] = useState("idle"); // idle | armed | busy | result
-        const [msg, setMsg] = useState("");
-        const [msgErr, setMsgErr] = useState(false);
-        const timers = useRef([]);
-
-        useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
-        const track = (fn, ms) => { timers.current.push(setTimeout(fn, ms)); };
-
-        const arm = () => {
-            setPhase("armed");
-            // Auto-disarm if the user walks away; only if still armed.
-            track(() => setPhase((p) => (p === "armed" ? "idle" : p)), 5000);
-        };
-        const confirm = async () => {
-            setPhase("busy");
-            try {
-                const summary = await onConfirm();
-                if (summary) {
-                    setMsg(summary);
-                    setMsgErr(false);
-                    setPhase("result");
-                    track(() => setPhase("idle"), 4000);
-                } else {
-                    setPhase("idle");
-                }
-            } catch (e) {
-                setMsg((e && e.message) || "Delete failed");
-                setMsgErr(true);
-                setPhase("result");
-                track(() => setPhase("idle"), 4000);
-            }
-        };
-
-        if (phase === "busy") return html`<span class="tb-status">Deleting…</span>`;
-        if (phase === "result") {
-            return html`<span class=${"tb-status" + (msgErr ? " err" : "")}>${msg}</span>`;
-        }
-        if (phase === "armed") {
-            return html`
-                <span class="tb-confirm">
-                    <span class="tb-confirm-q">Really delete ${count} item${count === 1 ? "" : "s"}?</span>
-                    <button class="btn danger armed" onClick=${confirm}>Yes</button>
-                    <button class="btn" onClick=${() => setPhase("idle")}>No</button>
-                </span>`;
-        }
-        return html`
-            <button
-                class=${"btn" + (quiet ? "" : " danger")}
-                onClick=${arm}
-                disabled=${disabled}>
-                ${label}
-            </button>`;
-    }
-
-    /**
-     * Compact row between the drop zone and the list, shown whenever there are
-     * items. Out of selection mode it offers a "Select" toggle and a quiet
-     * "Empty all"; in selection mode it shows the selected count, All/None quick
-     * links, an armed "Delete selected (n)", and Cancel.
-     */
-    function Toolbar({
-        items, selecting, selected,
-        onEnter, onExit, onAll, onNone, onDeleteSelected, onEmptyAll,
-    }) {
-        if (!selecting) {
-            return html`
-                <div class="toolbar">
-                    <button class="btn" onClick=${onEnter}>Select</button>
-                    <span class="spacer"></span>
-                    <${ConfirmAction}
-                        label="Empty all"
-                        count=${items.length}
-                        quiet=${true}
-                        onConfirm=${onEmptyAll} />
-                </div>`;
-        }
-        const n = selected.size;
-        return html`
-            <div class="toolbar">
-                <span class="tb-count">${n} selected</span>
-                <button class="btn" onClick=${onAll}>All</button>
-                <button class="btn" onClick=${onNone}>None</button>
-                <span class="spacer"></span>
-                <${ConfirmAction}
-                    label=${"Delete selected (" + n + ")"}
-                    count=${n}
-                    disabled=${n === 0}
-                    onConfirm=${onDeleteSelected} />
-                <button class="btn" onClick=${onExit}>Cancel</button>
-            </div>`;
-    }
-
-    function Row({ item, onRemove, selecting, selected, onToggle }) {
-        const [copied, setCopied] = useState(false);
-        const [armed, setArmed] = useState(false);
+    function Tile({ item, onRemove }) {
         const [busy, setBusy] = useState(false);
         const [err, setErr] = useState("");
+        const [copied, setCopied] = useState(false);
+        const [thumbBroken, setThumbBroken] = useState(false);
         const timers = useRef([]);
-
         useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
         const track = (fn, ms) => { timers.current.push(setTimeout(fn, ms)); };
 
         const onCopy = async () => {
             const ok = await copyText(item.url || "");
-            if (ok) {
-                setErr("");
-                setCopied(true);
-                track(() => setCopied(false), 1400);
-            } else {
-                setErr("Couldn't copy to clipboard");
-            }
+            if (ok) { setCopied(true); track(() => setCopied(false), 1400); }
+            else setErr("Couldn't copy");
         };
-
-        const onDelete = async () => {
-            if (!armed) {
-                setErr("");
-                setArmed(true);
-                track(() => setArmed(false), 3000);
-                return;
-            }
-            setBusy(true);
-            try {
-                await deleteItem(item.kind, item.id);
-                onRemove(item.kind, item.id);
-            } catch (e) {
-                setBusy(false);
-                setArmed(false);
-                setErr(e.message || "Delete failed");
-            }
+        // Run a tile mutation: mark busy, call the API, optimistically drop the
+        // row on success, or re-enable and surface the error on failure.
+        const runAction = async (call, kind, fallbackMsg) => {
+            setBusy(true); setErr("");
+            try { await call(); onRemove(kind, item.id); }
+            catch (e) { setBusy(false); setErr(e.message || fallbackMsg); }
         };
+        const onDelete = () => runAction(() => deleteItem("uploaded", item.id), "uploaded", "Delete failed");
+        const onApprove = () => runAction(() => approveItem(item.id), "pending", "Approve failed");
+        const onDiscard = () => runAction(() => discardItem(item.id), "pending", "Discard failed");
+        const onCancel = () => runAction(() => deleteItem("queued", item.id), "queued", "Cancel failed");
 
-        const queued = item.kind === "queued";
         // Thumbnails are local-only; <img> can't send headers, so the token
         // rides the query string like every other API call.
-        const thumbSrc = item.thumb
+        const thumbSrc = item.thumb && !thumbBroken
             ? withToken("/api/thumb?key=" + encodeURIComponent(item.id))
             : null;
-        // In selection mode the whole row is a checkbox: clicking (or Space/Enter)
-        // toggles it, and the per-item actions give way to the checkbox.
-        const onRowClick = selecting ? () => onToggle(item.id) : null;
-        const onRowKey = selecting
-            ? (e) => {
-                if (e.key === " " || e.key === "Enter") { e.preventDefault(); onToggle(item.id); }
-            }
-            : null;
+        const timeLabel = err ? err : item.kind === "queued" ? "Retrying…" : fmtTime(item.date);
+
         return html`
-            <div
-                class=${"row" + (queued ? " queued" : "") + (selecting ? " selectable" : "") + (selecting && selected ? " selected" : "")}
-                onClick=${onRowClick}
-                onKeyDown=${onRowKey}
-                role=${selecting ? "checkbox" : null}
-                aria-checked=${selecting ? (selected ? "true" : "false") : null}
-                tabindex=${selecting ? "0" : null}>
-                ${selecting
-                    ? html`<span class=${"checkbox" + (selected ? " on" : "")} aria-hidden="true">${selected ? "✓" : ""}</span>`
-                    : html`<span class="status-dot"></span>`}
+            <article class=${"tile" + (item.kind === "pending" ? " is-pending" : "")}>
+                ${item.kind === "pending" && html`<span class="ring" aria-hidden="true"></span>`}
+                ${item.kind === "queued" && html`<span class="queued-mark" aria-hidden="true"><span class="spin"></span></span>`}
                 ${thumbSrc
-                    ? html`<img class="thumb" loading="lazy" alt="" src=${thumbSrc} />`
-                    : html`<span class="thumb-ph" aria-hidden="true">▤</span>`}
-                <div class="meta">
-                    <span class="name" title=${item.fileName}>${item.fileName}</span>
-                    <span class="sep">·</span>
-                    ${queued
-                        ? html`<span class="qlabel">queued, retry pending<span class="dots"></span></span>`
-                        : html`<span class="time">${fmtTime(item.date)}</span>`}
+                    ? html`<img class="shot" loading="lazy" alt="" src=${thumbSrc} onError=${() => setThumbBroken(true)} />`
+                    : html`<span class="tile-ph" aria-hidden="true">${Icon.file}</span>`}
+                <div class="tile-info">
+                    <div class="tile-meta"><span class="tile-name" title=${item.fileName}>${item.fileName}</span></div>
+                    <div class="tile-meta">
+                        <span class=${"tile-time" + (err ? " err" : "")}>${timeLabel}</span>
+                        <span class="tile-actions">
+                            ${item.kind === "uploaded" && html`
+                                <button class=${"ibtn" + (copied ? " is-copied" : "")} type="button" aria-label="Copy link" onClick=${onCopy}>${copied ? Icon.check : Icon.copy}</button>
+                                <button class="ibtn discard" type="button" aria-label="Delete" disabled=${busy} onClick=${onDelete}>${Icon.trash}</button>`}
+                            ${item.kind === "pending" && html`
+                                <button class="ibtn approve" type="button" aria-label="Approve" disabled=${busy} onClick=${onApprove}>${Icon.check}</button>
+                                <button class="ibtn discard" type="button" aria-label="Discard" disabled=${busy} onClick=${onDiscard}>${Icon.x}</button>`}
+                            ${item.kind === "queued" && html`
+                                <button class="ibtn discard" type="button" aria-label="Cancel" disabled=${busy} onClick=${onCancel}>${Icon.x}</button>`}
+                        </span>
+                    </div>
                 </div>
-                ${!selecting && html`
-                    <div class="actions">
-                        ${!queued && html`
-                            <button class=${"btn" + (copied ? " copied" : "")} onClick=${onCopy}>
-                                ${copied ? "Copied" : "Copy"}
-                            </button>`}
-                        <button
-                            class=${"btn danger" + (armed ? " armed" : "")}
-                            onClick=${onDelete}
-                            disabled=${busy}
-                            title=${queued ? "Cancel this queued upload" : "Delete from R2"}>
-                            ${busy ? "…" : armed ? "Sure?" : queued ? "Cancel" : "Delete"}
-                        </button>
-                    </div>`}
-            </div>
-            ${!selecting && err && html`<div class="row-err">${err}</div>`}
-        `;
+            </article>`;
     }
 
-    /**
-     * Large drop zone at the top of the page: drop files here (or click to
-     * browse) and each is POSTed to /api/upload as its own multipart request.
-     * The daemon uploads to R2, records history, and copies the share URL
-     * server-side; new items surface via the existing 2s poll, so nothing is
-     * injected here. Files upload sequentially so the clipboard ends on the
-     * LAST file's URL deterministically.
-     */
-    function DropZone() {
-        const [drag, setDrag] = useState(false);
-        const [status, setStatus] = useState(null); // null | {kind, ...}
-        const inputRef = useRef(null);
+    const NAV_ITEMS = [
+        { key: "all", label: "All drops", icon: Icon.grid },
+        { key: "pending", label: "Pending approval", icon: Icon.clock },
+        { key: "uploaded", label: "Uploaded", icon: Icon.uploaded },
+        { key: "queued", label: "Queued", icon: Icon.queued },
+    ];
+
+    const EMPTY_COPY = {
+        all: "No drops yet — new captures appear here to approve.",
+        pending: "Nothing pending — you're all caught up.",
+        uploaded: "No uploads yet.",
+        queued: "Nothing queued.",
+    };
+
+    function App() {
+        const [items, setItems] = useState(null); // null = first load
+        const [online, setOnline] = useState(true);
+        const [authFailed, setAuthFailed] = useState(false);
+        const [filter, setFilter] = useState("all");
+        const [dragging, setDragging] = useState(false);
+        const [uploadErr, setUploadErr] = useState("");
+        const fileInputRef = useRef(null);
+        const dragDepth = useRef(0);
         const timers = useRef([]);
 
         useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
 
-        // Stop the browser from navigating to a file dropped anywhere on the
-        // page (outside the zone) — that would blow the dashboard away.
+        // Suppress the browser default for a file dropped ANYWHERE on the page
+        // (e.g. the sidebar) — otherwise the browser navigates to the file and
+        // blows the dashboard away. The upload/overlay stay scoped to <main>.
         useEffect(() => {
             const prevent = (e) => e.preventDefault();
             window.addEventListener("dragover", prevent);
@@ -709,97 +538,6 @@
                 window.removeEventListener("drop", prevent);
             };
         }, []);
-
-        const flashDone = (n) => {
-            setStatus({ kind: "done", n });
-            timers.current.push(setTimeout(() => setStatus(null), 2400));
-        };
-
-        const uploadAll = async (fileList) => {
-            const files = Array.from(fileList || []);
-            if (files.length === 0) return;
-            let lastUrl = "";
-            for (let i = 0; i < files.length; i++) {
-                setStatus({ kind: "uploading", i: i + 1, n: files.length, name: files[i].name });
-                try {
-                    const fd = new FormData();
-                    // Field name must be "file" — the server reads form.get("file").
-                    fd.append("file", files[i]);
-                    // No content-type header: the browser sets the multipart
-                    // boundary. The token rides the query string like every call.
-                    const res = await fetch(withToken("/api/upload"), { method: "POST", body: fd });
-                    if (!res.ok) {
-                        let msg = "Upload failed";
-                        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
-                        throw new Error(msg);
-                    }
-                    const j = await res.json();
-                    if (j && j.url) lastUrl = j.url;
-                } catch (e) {
-                    setStatus({ kind: "error", msg: (e && e.message) || "Upload failed" });
-                    return;
-                }
-            }
-            // The daemon already copied the URL server-side; also copy the last
-            // file's URL here as belt-and-braces, tolerating a rejection.
-            if (lastUrl) { try { await navigator.clipboard.writeText(lastUrl); } catch (_) {} }
-            flashDone(files.length);
-        };
-
-        const onDrop = (e) => {
-            e.preventDefault();
-            setDrag(false);
-            uploadAll(e.dataTransfer && e.dataTransfer.files);
-        };
-        const onPick = (e) => {
-            uploadAll(e.target.files);
-            e.target.value = ""; // let the same file be re-picked
-        };
-        const openPicker = () => { if (inputRef.current) inputRef.current.click(); };
-        const onKeyDown = (e) => {
-            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); }
-        };
-
-        let title = "Drop files to upload";
-        if (status && status.kind === "uploading") {
-            title = "Uploading " + status.i + " of " + status.n + "…";
-        } else if (status && status.kind === "done") {
-            title = status.n > 1 ? status.n + " files uploaded — link copied" : "Uploaded — link copied";
-        } else if (status && status.kind === "error") {
-            title = status.msg;
-        }
-        const cls = "dropzone"
-            + (drag ? " drag" : "")
-            + (status && status.kind === "done" ? " done" : "")
-            + (status && status.kind === "error" ? " err" : "");
-
-        return html`
-            <div
-                class=${cls}
-                role="button"
-                tabindex="0"
-                onClick=${openPicker}
-                onKeyDown=${onKeyDown}
-                onDragEnter=${(e) => { e.preventDefault(); setDrag(true); }}
-                onDragOver=${(e) => { e.preventDefault(); setDrag(true); }}
-                onDragLeave=${(e) => { e.preventDefault(); setDrag(false); }}
-                onDrop=${onDrop}>
-                <input ref=${inputRef} type="file" multiple hidden onChange=${onPick} />
-                <div class="dz-title">${title}</div>
-                <div class="dz-hint">Drop files to upload · click to browse</div>
-            </div>
-        `;
-    }
-
-    function App() {
-        const [items, setItems] = useState(null); // null = first load
-        const [online, setOnline] = useState(true);
-        const [authFailed, setAuthFailed] = useState(false);
-        // Selection mode + the set of selected item ids. Kept here (not in the
-        // Toolbar/Row) so it survives the 2s poll re-render; pruned below when the
-        // items it references disappear.
-        const [selecting, setSelecting] = useState(false);
-        const [selected, setSelected] = useState(() => new Set());
 
         useEffect(() => {
             let alive = true;
@@ -830,73 +568,95 @@
             return () => { alive = false; clearInterval(iv); };
         }, []);
 
-        // Prune selection against the live list every time it changes, so ids for
-        // items that were deleted (here or elsewhere) drop out of the Set and the
-        // "n selected" count never counts vanished rows. Leaving selection mode
-        // when the list empties (e.g. after Empty all) keeps the toolbar honest.
-        useEffect(() => {
-            if (items === null) return;
-            if (items.length === 0) {
-                setSelecting(false);
-                setSelected((prev) => (prev.size === 0 ? prev : new Set()));
-                return;
-            }
-            setSelected((prev) => {
-                if (prev.size === 0) return prev;
-                const live = new Set(items.map((it) => it.id));
-                let changed = false;
-                const next = new Set();
-                for (const id of prev) {
-                    if (live.has(id)) next.add(id);
-                    else changed = true;
-                }
-                return changed ? next : prev;
-            });
-        }, [items]);
+        const list = items || [];
+        const counts = {
+            all: list.length,
+            pending: list.filter((it) => it.kind === "pending").length,
+            uploaded: list.filter((it) => it.kind === "uploaded").length,
+            queued: list.filter((it) => it.kind === "queued").length,
+        };
+        const visible = filter === "all" ? list : list.filter((it) => it.kind === filter);
 
         const onRemove = (kind, id) =>
             setItems((prev) => (prev || []).filter((x) => !(x.kind === kind && x.id === id)));
 
-        // Optimistically drop confirmed-deleted ids from both the list and the
-        // selection so the UI updates before the next poll reconciles.
-        const onRemoveMany = (ids) => {
-            const drop = new Set(ids);
-            setItems((prev) => (prev || []).filter((x) => !drop.has(x.id)));
-            setSelected((prev) => {
-                if (prev.size === 0) return prev;
-                const next = new Set(prev);
-                for (const id of ids) next.delete(id);
-                return next;
-            });
+        // Uploads synthesise an "uploaded" item as soon as /api/upload responds,
+        // so it appears instantly rather than waiting for the next poll;
+        // de-dupe by id so the poll's copy (possibly with a thumbnail) simply
+        // replaces it.
+        const onUploaded = (item) =>
+            setItems((prev) => [item, ...(prev || []).filter((x) => x.id !== item.id)]);
+
+        // Files upload sequentially so the clipboard ends on the LAST file's
+        // URL deterministically; the daemon already copies it server-side too.
+        const uploadAll = async (fileList) => {
+            const files = Array.from(fileList || []);
+            if (files.length === 0) return;
+            setUploadErr("");
+            let lastUrl = "";
+            for (const file of files) {
+                try {
+                    const fd = new FormData();
+                    // Field name must be "file" — the server reads form.get("file").
+                    fd.append("file", file);
+                    const res = await fetch(withToken("/api/upload"), { method: "POST", body: fd });
+                    if (!res.ok) {
+                        let msg = "Upload failed";
+                        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) {}
+                        throw new Error(msg);
+                    }
+                    const j = await res.json();
+                    if (j && j.url) lastUrl = j.url;
+                    if (j && j.key) {
+                        onUploaded({
+                            id: j.key,
+                            kind: "uploaded",
+                            fileName: file.name,
+                            date: new Date().toISOString(),
+                            url: j.url || null,
+                            thumb: false,
+                        });
+                    }
+                } catch (e) {
+                    // Surface the failure and stop; files already uploaded remain.
+                    setUploadErr(`Couldn't upload ${file.name}: ${(e && e.message) || "Upload failed"}`);
+                    timers.current.push(setTimeout(() => setUploadErr(""), 6000));
+                    return;
+                }
+            }
+            if (lastUrl) { try { await navigator.clipboard.writeText(lastUrl); } catch (_) {} }
         };
 
-        const toggleSelected = (id) =>
-            setSelected((prev) => {
-                const next = new Set(prev);
-                if (next.has(id)) next.delete(id);
-                else next.add(id);
-                return next;
-            });
+        const openPicker = () => { if (fileInputRef.current) fileInputRef.current.click(); };
+        const onPick = (e) => { uploadAll(e.target.files); e.target.value = ""; };
 
-        const doDeleteSelected = async () => {
-            const ids = [...selected];
-            if (ids.length === 0) return "";
-            const data = await deleteBatch(ids);
-            onRemoveMany(data.deleted);
-            return failSummary(data.failed);
+        // The entire main area is a drop zone; only show the overlay once a
+        // real file drag enters (not text/link drags), tracking enter/leave
+        // depth so a drag over a child element doesn't flicker it off.
+        const isFileDrag = (e) =>
+            e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") !== -1;
+        const onDragEnter = (e) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            dragDepth.current++;
+            setDragging(true);
+        };
+        const onDragOver = (e) => { if (isFileDrag(e)) e.preventDefault(); };
+        const onDragLeave = (e) => {
+            if (!isFileDrag(e)) return;
+            dragDepth.current = Math.max(0, dragDepth.current - 1);
+            if (dragDepth.current === 0) setDragging(false);
+        };
+        const onDrop = (e) => {
+            e.preventDefault();
+            dragDepth.current = 0;
+            setDragging(false);
+            uploadAll(e.dataTransfer && e.dataTransfer.files);
         };
 
-        const doEmptyAll = async () => {
-            const ids = (items || []).map((it) => it.id);
-            if (ids.length === 0) return "";
-            const data = await deleteBatch(ids);
-            onRemoveMany(data.deleted);
-            return failSummary(data.failed);
-        };
-
-        // Group the already-sorted (newest-first) list under date headers.
+        // Group the already-sorted (newest-first) items under date headers.
         const groups = [];
-        for (const it of items || []) {
+        for (const it of visible) {
             const label = groupLabel(it.date);
             let g = groups[groups.length - 1];
             if (!g || g.label !== label) { g = { label, items: [] }; groups.push(g); }
@@ -904,62 +664,85 @@
         }
 
         return html`
-            <header class="bar">
-                <div class="wordmark">Spootie<span class="prompt">~ screenshots</span></div>
-                <div class="conn">
-                    <span class=${"dot " + (authFailed || !online ? "off" : "live")}></span>
-                    ${authFailed ? "reauth" : online ? "watching" : "reconnecting"}
+            <aside class="rail">
+                <div class="brand">
+                    <span class="brand-mark">
+                        ${BrandMark}
+                        <span class=${"status-dot" + (authFailed || !online ? " off" : "")} aria-hidden="true"></span>
+                    </span>
+                    <span class="brand-word">Spootie</span>
                 </div>
-            </header>
 
-            <${DropZone} />
+                <button class="rail-upload" type="button" onClick=${openPicker}>
+                    ${Icon.upload} Upload a file
+                </button>
+                <input ref=${fileInputRef} type="file" multiple hidden onChange=${onPick} />
 
-            ${authFailed
-                ? html`<div class="banner">Session expired — run <code>spootie ui</code> in your terminal to reopen the dashboard.</div>`
-                : !online && items !== null
-                    ? html`<div class="banner">Can't reach the daemon — retrying every 2s…</div>`
-                    : null}
+                <nav class="nav">
+                    ${NAV_ITEMS.map((n) => html`
+                        <button
+                            key=${n.key}
+                            class=${"nav-item" + (filter === n.key ? " is-active" : "")}
+                            type="button"
+                            onClick=${() => setFilter(n.key)}>
+                            ${n.icon}
+                            ${n.label}
+                            <span class="nav-count">${counts[n.key]}</span>
+                        </button>`)}
+                </nav>
 
-            ${items && items.length > 0
-                ? html`<${Toolbar}
-                        items=${items}
-                        selecting=${selecting}
-                        selected=${selected}
-                        onEnter=${() => setSelecting(true)}
-                        onExit=${() => { setSelecting(false); setSelected(new Set()); }}
-                        onAll=${() => setSelected(new Set(items.map((it) => it.id)))}
-                        onNone=${() => setSelected(new Set())}
-                        onDeleteSelected=${doDeleteSelected}
-                        onEmptyAll=${doEmptyAll} />`
-                : null}
+                <div class="rail-spacer"></div>
 
-            ${items === null
-                ? html`<div class="placeholder"><div class="glyph">◴</div><p>Connecting…</p></div>`
-                : items.length === 0
-                    ? html`
-                        <div class="placeholder">
-                            <div class="glyph">⌘⇧4</div>
-                            <h2>No uploads yet</h2>
-                            <p>Screenshots you confirm will show up here.</p>
-                        </div>`
-                    : html`
-                        <main>
-                            ${groups.map((g) => html`
-                                <section>
-                                    <div class="group-head">${g.label}</div>
-                                    ${g.items.map((it) => html`
-                                        <${Row}
-                                            key=${it.kind + ":" + it.id}
-                                            item=${it}
-                                            onRemove=${onRemove}
-                                            selecting=${selecting}
-                                            selected=${selected.has(it.id)}
-                                            onToggle=${toggleSelected} />`)}
-                                </section>`)}
-                            <div class="foot">— end of history —</div>
-                        </main>`}
+                <div class="rail-foot">
+                    <p class="stat">${counts.all} drop${counts.all === 1 ? "" : "s"}</p>
+                    <p>Links expire after 7 days</p>
+                </div>
+            </aside>
 
-            <footer class="brandbar">Spootie · local dashboard on port ${PORT}</footer>
+            <main
+                class=${"main" + (dragging ? " is-dragging" : "")}
+                onDragEnter=${onDragEnter}
+                onDragOver=${onDragOver}
+                onDragLeave=${onDragLeave}
+                onDrop=${onDrop}>
+                <div class="toolbar">
+                    <h1 class="page-title">Drops</h1>
+                    ${counts.pending > 0 && html`
+                        <button class="page-sub" type="button" onClick=${() => setFilter("pending")}>
+                            ${counts.pending} waiting for your review
+                        </button>`}
+                </div>
+
+                <div class="content">
+                    ${authFailed
+                        ? html`<div class="banner">Session expired — run <code>spootie ui</code> in your terminal to reopen the dashboard.</div>`
+                        : !online && items !== null
+                            ? html`<div class="banner">Can't reach the daemon — retrying every 2s…</div>`
+                            : null}
+                    ${uploadErr && html`<div class="banner err">${uploadErr}</div>`}
+
+                    ${items === null
+                        ? null
+                        : visible.length === 0
+                            ? html`
+                                <div class="empty">
+                                    ${Icon.file}
+                                    <p>${EMPTY_COPY[filter]}</p>
+                                </div>`
+                            : groups.map((g) => html`
+                                <div key=${g.label}>
+                                    <h2 class="date-heading">${g.label}</h2>
+                                    <div class="grid">
+                                        ${g.items.map((it) => html`
+                                            <${Tile} key=${it.kind + ":" + it.id} item=${it} onRemove=${onRemove} />`)}
+                                    </div>
+                                </div>`)}
+                </div>
+
+                <div class="drop-overlay" aria-hidden="true">
+                    <div class="drop-overlay-label">${Icon.dropArrow} Drop to upload</div>
+                </div>
+            </main>
         `;
     }
 
