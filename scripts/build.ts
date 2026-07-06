@@ -4,10 +4,10 @@
  * `bun install` to get a runnable daemon on their PATH:
  *
  *  - dist/spootie: a self-contained daemon binary (`bun build --compile`).
- *    public/dashboard.html and public/vendor/preact-standalone.mjs are
- *    embedded into it via `with { type: "file" }` imports (see
- *    src/daemon/assets.ts) — no separate asset files need to ship
- *    alongside the binary.
+ *    The bundled dashboard (dist/dashboard.html, built here from
+ *    src/dashboard/* first) and public/favicon.svg are embedded into it via
+ *    `with { type: "file" }` imports (see src/daemon/assets.ts) — no separate
+ *    asset files need to ship alongside the binary.
  *  - ~/.local/bin/spootie: the compiled binary, installed to a stable path so
  *    `spootie` is runnable directly and the LaunchAgent can point at an inode
  *    that survives rebuilds.
@@ -21,6 +21,7 @@ import { chmod, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { installAgent, PLIST_PATH } from "../src/commands/launchagent.ts";
+import { buildDashboard } from "./build-dashboard.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const DIST_DIR = join(ROOT, "dist");
@@ -71,6 +72,12 @@ const checkPath = (): void => {
 
 const main = async (): Promise<void> => {
     await mkdir(DIST_DIR, { recursive: true });
+
+    // Bundle the dashboard first: `bun build --compile` below embeds
+    // dist/dashboard.html via src/daemon/assets.ts, so it must exist and be
+    // current before we compile.
+    await buildDashboard();
+    console.log("✓ Built dist/dashboard.html");
 
     const spootieOut = join(DIST_DIR, "spootie");
     run([

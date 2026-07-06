@@ -13,17 +13,12 @@
  * treating it as an ambient/global declarations file, which made every
  * `declare module` below invisible to the checker.
  */
-declare module "*/public/dashboard.html" {
+declare module "*/dist/dashboard.html" {
     const path: string;
     export default path;
 }
 
 declare module "*/public/favicon.svg" {
-    const path: string;
-    export default path;
-}
-
-declare module "*/preact-standalone.mjs" {
     const path: string;
     export default path;
 }

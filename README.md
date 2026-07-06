@@ -114,3 +114,15 @@ bun run type-check    # tsc --noEmit
 bun run lint          # oxlint .
 bun run format        # oxfmt (rewrites files in place)
 ```
+
+### Dashboard UI
+
+The dashboard is a small Preact app under `src/dashboard/` (`app.tsx`, `tile.tsx`,
+`icons.tsx`, `api.ts`, `format.ts`, `styles.css`). `bun run dashboard:build`
+bundles it with Bun into a single self-contained `dist/dashboard.html`, which
+the daemon embeds and serves at `/`.
+
+`bun run dev` builds it once, rebuilds on change, and runs the daemon — the
+server reads the file per request, so editing a component and reloading the
+browser shows the change. `bun run build` bundles it before compiling the
+binary, so `dist/dashboard.html` is always current in a release.

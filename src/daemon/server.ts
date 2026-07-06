@@ -4,7 +4,7 @@ import { chmod, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { copyUrlBestEffort } from "../lib/clipboard.ts";
 import type { Config } from "../lib/config.ts";
-import { DASHBOARD_HTML_ASSET, FAVICON_SVG_ASSET, PREACT_STANDALONE_ASSET } from "./assets.ts";
+import { DASHBOARD_HTML_ASSET, FAVICON_SVG_ASSET } from "./assets.ts";
 import { errorMessage, errorStatus, isRetryableNetworkError } from "../lib/errors.ts";
 import {
     readHistory,
@@ -95,10 +95,6 @@ export interface UiItem {
  */
 const STATIC_ROUTES: Record<string, { path: string; type: string; cache?: string }> = {
     "/": { path: DASHBOARD_HTML_ASSET, type: "text/html; charset=utf-8" },
-    "/vendor/preact-standalone.mjs": {
-        path: PREACT_STANDALONE_ASSET,
-        type: "text/javascript; charset=utf-8",
-    },
     // The favicon never changes at a given path and carries no secrets, so let the
     // browser cache it hard rather than re-fetch it on every dashboard visit.
     "/favicon.svg": {

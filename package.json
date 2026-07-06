@@ -8,8 +8,10 @@
     },
     "type": "module",
     "scripts": {
-        "dev": "bun run src/index.ts",
+        "dev": "bun run scripts/dev.ts",
         "spootie": "bun run src/index.ts",
+        "dashboard:build": "bun run scripts/build-dashboard.ts",
+        "dashboard:watch": "bun run scripts/build-dashboard.ts --watch",
         "build": "bun run scripts/build.ts",
         "type-check": "tsc --noEmit",
         "lint": "oxlint .",
@@ -17,7 +19,8 @@
         "format:check": "oxfmt --check ."
     },
     "dependencies": {
-        "@aws-sdk/client-s3": "^3.658.0"
+        "@aws-sdk/client-s3": "^3.658.0",
+        "preact": "^10.29.4"
     },
     "devDependencies": {
         "@types/bun": "^1.1.0",

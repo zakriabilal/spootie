@@ -5,6 +5,8 @@
         "module": "ESNext",
         "moduleResolution": "bundler",
         "types": ["bun"],
+        "jsx": "react-jsx",
+        "jsxImportSource": "preact",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
         "noEmit": true,
